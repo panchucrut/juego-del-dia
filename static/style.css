@@ -126,5 +126,18 @@ ul.points li{background:var(--bg2); border:1px solid var(--line); border-radius:
 .inline-form{display:flex; align-items:center; gap:6px}
 .inline-form input{width:54px; text-align:center}
 
+/* Grid apuestas de todos */
+.table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table.grid{min-width:max-content}
+table.grid th{font-size:.72rem; text-align:center; vertical-align:bottom; min-width:58px; line-height:1.2}
+table.grid td{text-align:center; white-space:nowrap}
+.sticky-col{position:sticky; left:0; background:var(--card); text-align:left !important; z-index:1; box-shadow:1px 0 0 var(--line)}
+tr.me .sticky-col{background:#2a2a5a}
+.pts-mini{font-weight:900; padding:1px 6px; border-radius:6px; font-size:.72rem}
+.pts-mini.p4{background:var(--p4); color:#0b0b16}
+.pts-mini.p2{background:var(--p2); color:#0b0b16}
+.pts-mini.p1{background:var(--p1); color:#0b0b16}
+.pts-mini.p0{color:var(--muted)}
+
 .foot{text-align:center; padding:20px; color:var(--muted); font-size:.85rem}
 .foot a.muted{opacity:.5}

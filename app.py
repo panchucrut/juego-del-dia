@@ -60,6 +60,11 @@ class Bet(db.Model):
     __table_args__ = (db.UniqueConstraint("player_id", "match_id"),)
 
 
+class Setting(db.Model):
+    key = db.Column(db.String(40), primary_key=True)
+    value = db.Column(db.String(200))
+
+
 with app.app_context():
     db.create_all()
 
@@ -73,9 +78,14 @@ def sign(x):
 
 def bet_points(hp, ap, hs, as_):
     """Puntos de una apuesta vs el resultado real.
-       4 = marcador exacto | 2 = misma diferencia | 1 = solo ganador | 0 = nada"""
-    if None in (hp, ap, hs, as_):
+       4 = marcador exacto | 2 = misma diferencia | 1 = solo ganador | 0 = nada
+       Predicción no ingresada cuenta como 0-0."""
+    if hs is None or as_ is None:
         return 0
+    if hp is None:
+        hp = 0
+    if ap is None:
+        ap = 0
     if hp == hs and ap == as_:
         return 4
     if hp - ap == hs - as_:          # misma diferencia (incluye acertar empate)
@@ -114,19 +124,23 @@ def day_awards(scores):
 
 
 def day_ranking(fecha):
-    """Devuelve (scores, awards, matches, finished) para un dia."""
+    """Devuelve (scores, awards, matches, finished) para un dia.
+       Incluye a TODOS los jugadores inscritos; sin apuesta cuenta 0-0."""
     matches = Match.query.filter_by(match_date=fecha).order_by(Match.kickoff).all()
     ids = [m.id for m in matches]
     finished = {m.id: m for m in matches if m.finished}
-    scores = {}
+    bet_map = {}
     if ids:
-        bets = Bet.query.filter(Bet.match_id.in_(ids)).all()
-        for b in bets:
-            scores.setdefault(b.player_id, 0)
-            m = finished.get(b.match_id)
-            if m:
-                scores[b.player_id] += bet_points(
-                    b.home_pred, b.away_pred, m.home_score, m.away_score)
+        for b in Bet.query.filter(Bet.match_id.in_(ids)).all():
+            bet_map[(b.player_id, b.match_id)] = b
+    scores = {}
+    for p in Player.query.all():
+        total = 0
+        for mid, m in finished.items():
+            b = bet_map.get((p.id, mid))
+            hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
+            total += bet_points(hp, ap, m.home_score, m.away_score)
+        scores[p.id] = total
     awards = day_awards(scores) if scores else {}
     return scores, awards, matches, finished
 
@@ -167,6 +181,24 @@ def fecha_default():
     hoy = now_local().date()
     futuras = [f for f in fs if f >= hoy]
     return futuras[0] if futuras else fs[-1]
+
+
+def get_setting(key, default=None):
+    s = db.session.get(Setting, key)
+    return s.value if s else default
+
+
+def set_setting(key, value):
+    s = db.session.get(Setting, key)
+    if s:
+        s.value = value
+    else:
+        db.session.add(Setting(key=key, value=value))
+    db.session.commit()
+
+
+def registration_open():
+    return get_setting("registration_open", "1") == "1"
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -214,6 +246,9 @@ def login():
             return redirect(url_for("login"))
         p = Player.query.filter(db.func.lower(Player.name) == name.lower()).first()
         if not p:
+            if not registration_open():
+                flash("La inscripción está cerrada 🔒. Pídele al organizador que te sume.", "error")
+                return redirect(url_for("login"))
             if Player.query.count() >= MAX_PLAYERS:
                 flash("El juego ya tiene 15 jugadores 😅", "error")
                 return redirect(url_for("login"))
@@ -260,8 +295,8 @@ def jugar():
     info = []
     for m in matches:
         b = my_bets.get(m.id)
-        pts = (bet_points(b.home_pred, b.away_pred, m.home_score, m.away_score)
-               if (b and m.finished) else None)
+        hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
+        pts = bet_points(hp, ap, m.home_score, m.away_score) if m.finished else None
         info.append(dict(m=m, bet=b, locked=is_locked(m), points=pts))
 
     return render_template("jugar.html", fecha=fecha, fechas=fs, info=info)
@@ -288,10 +323,9 @@ def apostar():
             continue
         hp = request.form.get(f"home_{mid}", "").strip()
         ap = request.form.get(f"away_{mid}", "").strip()
-        if hp == "" or ap == "":
-            continue
         try:
-            hp, ap = int(hp), int(ap)
+            hp = int(hp) if hp != "" else 0
+            ap = int(ap) if ap != "" else 0
         except ValueError:
             continue
         if not (0 <= hp <= 99 and 0 <= ap <= 99):
@@ -347,6 +381,50 @@ def ranking():
                            day_rows=day_rows, gen=gen, day_complete=day_complete)
 
 
+@app.route("/apuestas")
+def apuestas():
+    if not g.player:
+        return redirect(url_for("login"))
+    fs = fechas_disponibles()
+    sel = request.args.get("fecha")
+    fecha = None
+    if sel:
+        try:
+            fecha = date.fromisoformat(sel)
+        except ValueError:
+            pass
+    if not fecha:
+        fecha = fecha_default()
+
+    matches = []
+    if fecha:
+        matches = (Match.query.filter_by(match_date=fecha)
+                   .order_by(Match.kickoff).all())
+    ids = [m.id for m in matches]
+    bet_map = {}
+    if ids:
+        for b in Bet.query.filter(Bet.match_id.in_(ids)).all():
+            bet_map[(b.player_id, b.match_id)] = b
+
+    cols = [dict(m=m, locked=is_locked(m)) for m in matches]
+    grid = []
+    for p in Player.query.order_by(Player.name).all():
+        cells = []
+        for m in matches:
+            if is_locked(m):
+                b = bet_map.get((p.id, m.id))
+                hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
+                pts = (bet_points(hp, ap, m.home_score, m.away_score)
+                       if m.finished else None)
+                cells.append(dict(shown=True, pred=f"{hp}-{ap}",
+                                  pts=pts, default=(b is None)))
+            else:
+                cells.append(dict(shown=False))
+        grid.append(dict(name=p.name, me=(p.id == g.player.id), cells=cells))
+    return render_template("apuestas.html", fecha=fecha, fechas=fs,
+                           cols=cols, grid=grid)
+
+
 @app.route("/reglas")
 def reglas():
     return render_template("reglas.html")
@@ -372,6 +450,14 @@ def admin_logout():
     return redirect(url_for("jugar"))
 
 
+@app.route("/admin/inscripcion", methods=["POST"])
+def admin_inscripcion():
+    require_admin()
+    set_setting("registration_open", "0" if registration_open() else "1")
+    flash("Inscripción " + ("abierta ✅" if registration_open() else "cerrada 🔒"), "ok")
+    return redirect(url_for("admin"))
+
+
 def require_admin():
     if not session.get("is_admin"):
         abort(403)
@@ -384,7 +470,7 @@ def admin():
     matches = Match.query.order_by(Match.kickoff).all()
     players = Player.query.order_by(Player.name).all()
     return render_template("admin.html", matches=matches, players=players,
-                           now=now_local())
+                           now=now_local(), registration_open=registration_open())
 
 
 @app.route("/admin/partido", methods=["POST"])

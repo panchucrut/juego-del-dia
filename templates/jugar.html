@@ -17,7 +17,8 @@
 {% else %}
   <h1 class="day-title">{{ fecha | fecha_larga }}</h1>
   <p class="muted center">Escribe cuántos goles crees que hará cada equipo y guarda.
-     Puedes cambiarlo hasta que empiece el partido ⏰</p>
+     Puedes cambiarlo hasta que empiece el partido ⏰<br>
+     Si dejas un partido en blanco, cuenta como <b>0-0</b>.</p>
 
   <form method="post" action="{{ url_for('apostar') }}">
     <input type="hidden" name="fecha" value="{{ fecha.isoformat() }}">
@@ -59,7 +60,7 @@
         </div>
 
         {% if it.locked and not m.finished and not it.bet %}
-          <p class="hint warn">No alcanzaste a apostar 😬 (0 puntos)</p>
+          <p class="hint warn">No apostaste 😬 — cuenta como 0-0</p>
         {% endif %}
 
         {% if m.finished %}
@@ -71,7 +72,11 @@
               {% elif it.points == 1 %}<span class="pts p1">🟢 Ganador +1</span>
               {% else %}<span class="pts p0">❌ 0</span>{% endif %}
             {% else %}
-              <span class="pts p0">No apostaste · 0 puntos</span>
+              Sin apuesta (cuenta <b>0-0</b>) →
+              {% if it.points == 4 %}<span class="pts p4">🌟 +4</span>
+              {% elif it.points == 2 %}<span class="pts p2">🔵 +2</span>
+              {% elif it.points == 1 %}<span class="pts p1">🟢 +1</span>
+              {% else %}<span class="pts p0">0</span>{% endif %}
             {% endif %}
           </div>
         {% endif %}

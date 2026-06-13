@@ -14,6 +14,7 @@
       {% if current_player %}
         <a href="{{ url_for('jugar') }}">Jugar</a>
         <a href="{{ url_for('ranking') }}">Ranking</a>
+        <a href="{{ url_for('apuestas') }}">Apuestas</a>
         <a href="{{ url_for('reglas') }}">Reglas</a>
         <span class="whoami">👤 {{ current_player.name }}</span>
         <a class="ghost" href="{{ url_for('logout') }}">Salir</a>
