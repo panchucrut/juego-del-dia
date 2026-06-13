@@ -1,0 +1,447 @@
+import os
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
+
+from flask import (Flask, render_template, request, redirect, url_for,
+                   session, flash, abort, g)
+from flask_sqlalchemy import SQLAlchemy
+
+# ----------------------------------------------------------------------------
+# Configuracion
+# ----------------------------------------------------------------------------
+TZ = ZoneInfo("America/Santiago")   # hora de Chile
+MAX_PLAYERS = 15
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "cambia-esto-en-produccion")
+
+db_url = os.environ.get("DATABASE_URL", "sqlite:///juego.db")
+if db_url.startswith("postgres://"):                 # compat Render/Heroku
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+ADMIN_PIN = os.environ.get("ADMIN_PIN", "1234")      # PIN del organizador
+
+db = SQLAlchemy(app)
+
+
+# ----------------------------------------------------------------------------
+# Modelos
+# ----------------------------------------------------------------------------
+def now_local():
+    return datetime.now(TZ).replace(tzinfo=None)
+
+
+class Player(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(40), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=now_local)
+
+
+class Match(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    home_team = db.Column(db.String(40), nullable=False)
+    away_team = db.Column(db.String(40), nullable=False)
+    kickoff = db.Column(db.DateTime, nullable=False)      # hora Chile (naive)
+    match_date = db.Column(db.Date, nullable=False)       # el "dia"
+    home_score = db.Column(db.Integer)
+    away_score = db.Column(db.Integer)
+    finished = db.Column(db.Boolean, default=False)
+
+
+class Bet(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("player.id"), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey("match.id"), nullable=False)
+    home_pred = db.Column(db.Integer, nullable=False)
+    away_pred = db.Column(db.Integer, nullable=False)
+    updated_at = db.Column(db.DateTime, default=now_local)
+    __table_args__ = (db.UniqueConstraint("player_id", "match_id"),)
+
+
+with app.app_context():
+    db.create_all()
+
+
+# ----------------------------------------------------------------------------
+# Logica de puntos
+# ----------------------------------------------------------------------------
+def sign(x):
+    return (x > 0) - (x < 0)
+
+
+def bet_points(hp, ap, hs, as_):
+    """Puntos de una apuesta vs el resultado real.
+       4 = marcador exacto | 2 = misma diferencia | 1 = solo ganador | 0 = nada"""
+    if None in (hp, ap, hs, as_):
+        return 0
+    if hp == hs and ap == as_:
+        return 4
+    if hp - ap == hs - as_:          # misma diferencia (incluye acertar empate)
+        return 2
+    if sign(hp - ap) == sign(hs - as_):
+        return 1
+    return 0
+
+
+def day_awards(scores):
+    """Reparte los puntos del dia (+2 / +1 / -1 / -2) segun el ranking.
+       Empates -> promedio de los premios de las posiciones que ocupan.
+       Siempre suma cero (lo que ganan unos lo pierden otros)."""
+    n = len(scores)
+    if n == 0:
+        return {}
+    reward = [0.0] * n
+    reward[0] += 2                   # 1er lugar
+    if n >= 2:
+        reward[1] += 1               # 2do lugar
+        reward[n - 2] += -1          # penultimo
+    reward[n - 1] += -2              # ultimo
+
+    ordered = sorted(scores.items(), key=lambda x: -x[1])
+    awards = {}
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and ordered[j + 1][1] == ordered[i][1]:
+            j += 1
+        avg = sum(reward[i:j + 1]) / (j - i + 1)
+        for k in range(i, j + 1):
+            awards[ordered[k][0]] = avg
+        i = j + 1
+    return awards
+
+
+def day_ranking(fecha):
+    """Devuelve (scores, awards, matches, finished) para un dia."""
+    matches = Match.query.filter_by(match_date=fecha).order_by(Match.kickoff).all()
+    ids = [m.id for m in matches]
+    finished = {m.id: m for m in matches if m.finished}
+    scores = {}
+    if ids:
+        bets = Bet.query.filter(Bet.match_id.in_(ids)).all()
+        for b in bets:
+            scores.setdefault(b.player_id, 0)
+            m = finished.get(b.match_id)
+            if m:
+                scores[b.player_id] += bet_points(
+                    b.home_pred, b.away_pred, m.home_score, m.away_score)
+    awards = day_awards(scores) if scores else {}
+    return scores, awards, matches, finished
+
+
+def overall_ranking():
+    """Suma de premios de campeonato por jugador (solo dias con algo jugado)."""
+    totals = {}
+    for f in fechas_disponibles():
+        scores, awards, matches, finished = day_ranking(f)
+        if not finished:
+            continue
+        for pid, a in awards.items():
+            totals.setdefault(pid, {"award": 0.0, "bet": 0})
+            totals[pid]["award"] += a
+        for pid, s in scores.items():
+            totals.setdefault(pid, {"award": 0.0, "bet": 0})
+            totals[pid]["bet"] += s
+    return totals
+
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+def is_locked(m):
+    return now_local() >= m.kickoff
+
+
+def fechas_disponibles():
+    rows = (db.session.query(Match.match_date)
+            .distinct().order_by(Match.match_date).all())
+    return [r[0] for r in rows]
+
+
+def fecha_default():
+    fs = fechas_disponibles()
+    if not fs:
+        return None
+    hoy = now_local().date()
+    futuras = [f for f in fs if f >= hoy]
+    return futuras[0] if futuras else fs[-1]
+
+
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+@app.template_filter("fecha_larga")
+def fecha_larga(d):
+    if not d:
+        return ""
+    return f"{DIAS[d.weekday()].capitalize()} {d.day} de {MESES[d.month - 1]}"
+
+
+@app.before_request
+def load_player():
+    g.player = None
+    pid = session.get("player_id")
+    if pid:
+        g.player = db.session.get(Player, pid)
+
+
+@app.context_processor
+def inject_globals():
+    return dict(current_player=getattr(g, "player", None),
+                is_admin=session.get("is_admin", False))
+
+
+# ----------------------------------------------------------------------------
+# Rutas: jugador
+# ----------------------------------------------------------------------------
+@app.route("/")
+def index():
+    if not g.player:
+        return redirect(url_for("login"))
+    return redirect(url_for("jugar"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()[:40]
+        if not name:
+            flash("Escribe tu nombre 🙂", "error")
+            return redirect(url_for("login"))
+        p = Player.query.filter(db.func.lower(Player.name) == name.lower()).first()
+        if not p:
+            if Player.query.count() >= MAX_PLAYERS:
+                flash("El juego ya tiene 15 jugadores 😅", "error")
+                return redirect(url_for("login"))
+            p = Player(name=name)
+            db.session.add(p)
+            db.session.commit()
+        session["player_id"] = p.id
+        return redirect(url_for("jugar"))
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.pop("player_id", None)
+    return redirect(url_for("login"))
+
+
+@app.route("/jugar")
+def jugar():
+    if not g.player:
+        return redirect(url_for("login"))
+    fs = fechas_disponibles()
+    sel = request.args.get("fecha")
+    fecha = None
+    if sel:
+        try:
+            fecha = date.fromisoformat(sel)
+        except ValueError:
+            fecha = None
+    if not fecha:
+        fecha = fecha_default()
+
+    matches = []
+    if fecha:
+        matches = (Match.query.filter_by(match_date=fecha)
+                   .order_by(Match.kickoff).all())
+    my_bets = {}
+    if matches:
+        ids = [m.id for m in matches]
+        for b in Bet.query.filter(Bet.match_id.in_(ids),
+                                  Bet.player_id == g.player.id):
+            my_bets[b.match_id] = b
+
+    info = []
+    for m in matches:
+        b = my_bets.get(m.id)
+        pts = (bet_points(b.home_pred, b.away_pred, m.home_score, m.away_score)
+               if (b and m.finished) else None)
+        info.append(dict(m=m, bet=b, locked=is_locked(m), points=pts))
+
+    return render_template("jugar.html", fecha=fecha, fechas=fs, info=info)
+
+
+@app.route("/apostar", methods=["POST"])
+def apostar():
+    if not g.player:
+        return redirect(url_for("login"))
+    fecha = request.form.get("fecha")
+    guardadas = bloqueadas = 0
+    for key in list(request.form.keys()):
+        if not key.startswith("home_"):
+            continue
+        try:
+            mid = int(key[5:])
+        except ValueError:
+            continue
+        m = db.session.get(Match, mid)
+        if not m:
+            continue
+        if is_locked(m):
+            bloqueadas += 1
+            continue
+        hp = request.form.get(f"home_{mid}", "").strip()
+        ap = request.form.get(f"away_{mid}", "").strip()
+        if hp == "" or ap == "":
+            continue
+        try:
+            hp, ap = int(hp), int(ap)
+        except ValueError:
+            continue
+        if not (0 <= hp <= 99 and 0 <= ap <= 99):
+            continue
+        b = Bet.query.filter_by(player_id=g.player.id, match_id=mid).first()
+        if b:
+            b.home_pred, b.away_pred, b.updated_at = hp, ap, now_local()
+        else:
+            db.session.add(Bet(player_id=g.player.id, match_id=mid,
+                               home_pred=hp, away_pred=ap))
+        guardadas += 1
+    db.session.commit()
+    msg = f"¡Listo! Guardé {guardadas} marcador(es). 🎉"
+    if bloqueadas:
+        msg += f" ({bloqueadas} ya estaban cerrados 🔒)"
+    flash(msg, "ok")
+    return redirect(url_for("jugar", fecha=fecha))
+
+
+@app.route("/ranking")
+def ranking():
+    if not g.player:
+        return redirect(url_for("login"))
+    fs = fechas_disponibles()
+    sel = request.args.get("fecha")
+    fecha = None
+    if sel:
+        try:
+            fecha = date.fromisoformat(sel)
+        except ValueError:
+            pass
+    if not fecha:
+        fecha = fecha_default()
+
+    players = {p.id: p for p in Player.query.all()}
+    day_rows, day_complete = [], False
+    if fecha:
+        scores, awards, matches, finished = day_ranking(fecha)
+        day_complete = bool(matches) and all(m.finished for m in matches)
+        rows = [dict(name=players[pid].name, score=sc,
+                     award=awards.get(pid, 0), me=(pid == g.player.id))
+                for pid, sc in scores.items()]
+        rows.sort(key=lambda r: (-r["score"], r["name"].lower()))
+        day_rows = rows
+
+    overall = overall_ranking()
+    gen = [dict(name=players[pid].name, award=d["award"], bet=d["bet"],
+                me=(pid == g.player.id))
+           for pid, d in overall.items()]
+    gen.sort(key=lambda r: (-r["award"], -r["bet"], r["name"].lower()))
+
+    return render_template("ranking.html", fecha=fecha, fechas=fs,
+                           day_rows=day_rows, gen=gen, day_complete=day_complete)
+
+
+@app.route("/reglas")
+def reglas():
+    return render_template("reglas.html")
+
+
+# ----------------------------------------------------------------------------
+# Rutas: organizador (admin)
+# ----------------------------------------------------------------------------
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        if request.form.get("pin") == ADMIN_PIN:
+            session["is_admin"] = True
+            flash("Modo organizador activado 🛠️", "ok")
+            return redirect(url_for("admin"))
+        flash("PIN incorrecto", "error")
+    return render_template("admin_login.html")
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("jugar"))
+
+
+def require_admin():
+    if not session.get("is_admin"):
+        abort(403)
+
+
+@app.route("/admin")
+def admin():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    matches = Match.query.order_by(Match.kickoff).all()
+    players = Player.query.order_by(Player.name).all()
+    return render_template("admin.html", matches=matches, players=players,
+                           now=now_local())
+
+
+@app.route("/admin/partido", methods=["POST"])
+def admin_crear():
+    require_admin()
+    home = request.form.get("home_team", "").strip()
+    away = request.form.get("away_team", "").strip()
+    ko = request.form.get("kickoff", "").strip()
+    if not (home and away and ko):
+        flash("Faltan datos del partido", "error")
+        return redirect(url_for("admin"))
+    try:
+        kdt = datetime.fromisoformat(ko)          # "YYYY-MM-DDTHH:MM"
+    except ValueError:
+        flash("Fecha/hora inválida", "error")
+        return redirect(url_for("admin"))
+    db.session.add(Match(home_team=home, away_team=away,
+                         kickoff=kdt, match_date=kdt.date()))
+    db.session.commit()
+    flash("Partido agregado ⚽", "ok")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/partido/<int:mid>/resultado", methods=["POST"])
+def admin_resultado(mid):
+    require_admin()
+    m = db.session.get(Match, mid)
+    if not m:
+        abort(404)
+    hs = request.form.get("home_score", "").strip()
+    as_ = request.form.get("away_score", "").strip()
+    if hs == "" or as_ == "":
+        m.home_score = m.away_score = None
+        m.finished = False
+    else:
+        try:
+            m.home_score, m.away_score = int(hs), int(as_)
+            m.finished = True
+        except ValueError:
+            flash("Marcador inválido", "error")
+            return redirect(url_for("admin"))
+    db.session.commit()
+    flash("Resultado guardado ✅", "ok")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/partido/<int:mid>/borrar", methods=["POST"])
+def admin_borrar(mid):
+    require_admin()
+    m = db.session.get(Match, mid)
+    if m:
+        Bet.query.filter_by(match_id=mid).delete()
+        db.session.delete(m)
+        db.session.commit()
+        flash("Partido borrado 🗑️", "ok")
+    return redirect(url_for("admin"))
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)

@@ -1,0 +1,130 @@
+:root{
+  --bg:#0f1226; --bg2:#171a36; --card:#1e2245; --line:#2c3162;
+  --ink:#eef0ff; --muted:#9aa0c7; --pri:#ff5a8a; --pri2:#7c5cff;
+  --good:#34d399; --bad:#fb7185; --warn:#fbbf24;
+  --p1:#34d399; --p2:#38bdf8; --p4:#c084fc;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:linear-gradient(160deg,#0f1226,#1a1340 60%,#2a1840);
+  color:var(--ink); min-height:100vh;
+}
+a{color:#bdb6ff; text-decoration:none}
+a:hover{text-decoration:underline}
+
+.topbar{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:12px 16px; background:rgba(0,0,0,.25); position:sticky; top:0; z-index:5;
+  backdrop-filter:blur(8px);
+}
+.brand{font-weight:800; font-size:1.1rem; color:#fff}
+.topbar nav{display:flex; gap:14px; align-items:center; margin-left:auto; flex-wrap:wrap}
+.whoami{color:var(--muted); font-size:.9rem}
+.ghost{opacity:.8}
+
+.container{max-width:680px; margin:0 auto; padding:16px 14px 90px}
+.center{text-align:center}
+.muted{color:var(--muted)}
+.big{font-size:1.1rem}
+
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:18px;
+  padding:18px; margin:14px 0; box-shadow:0 8px 30px rgba(0,0,0,.25);
+}
+.hero{text-align:center}
+.hero h1{font-size:2rem; margin:.2em 0}
+
+h1.day-title,h2.day-title{text-align:center; margin:18px 0 6px}
+
+/* Flash */
+.flash{padding:12px 14px; border-radius:12px; margin:10px 0; font-weight:600}
+.flash.ok{background:rgba(52,211,153,.15); border:1px solid var(--good)}
+.flash.error{background:rgba(251,113,133,.15); border:1px solid var(--bad)}
+
+/* Botones */
+.btn{
+  display:inline-block; border:0; border-radius:14px; padding:12px 18px;
+  font-weight:800; font-size:1rem; cursor:pointer; color:#fff;
+  background:var(--line);
+}
+.btn.primary{background:linear-gradient(135deg,var(--pri),var(--pri2))}
+.btn.big{width:100%; padding:16px; font-size:1.1rem; margin-top:10px}
+.btn.small{padding:8px 12px; font-size:.9rem}
+.btn.danger{background:#5a2030}
+.btn:hover{filter:brightness(1.08)}
+
+/* Login / forms */
+.login-form{display:flex; flex-direction:column; gap:10px; margin:16px auto; max-width:360px}
+label{font-weight:600; font-size:.95rem}
+input{
+  font-size:1.05rem; padding:12px; border-radius:12px; border:1px solid var(--line);
+  background:var(--bg2); color:var(--ink); width:100%;
+}
+input:focus{outline:2px solid var(--pri2)}
+
+/* Day chips */
+.daybar{display:flex; gap:8px; overflow-x:auto; padding:6px 2px; justify-content:center; flex-wrap:wrap}
+.chip{
+  background:var(--bg2); border:1px solid var(--line); padding:8px 14px;
+  border-radius:999px; font-weight:700; white-space:nowrap; color:var(--ink);
+}
+.chip.active{background:linear-gradient(135deg,var(--pri),var(--pri2)); border-color:transparent; color:#fff}
+
+/* Match card */
+.match.locked{opacity:.85}
+.match-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px}
+.ko{color:var(--muted); font-weight:700}
+.badge{font-size:.78rem; font-weight:800; padding:4px 10px; border-radius:999px}
+.badge.open{background:rgba(52,211,153,.18); color:var(--good)}
+.badge.live{background:rgba(251,191,36,.18); color:var(--warn)}
+.badge.done{background:rgba(124,92,255,.22); color:#c9bdff}
+
+.teams{display:flex; align-items:center; gap:8px; justify-content:space-between}
+.team{flex:1; font-weight:800; font-size:1.05rem}
+.team.home{text-align:right}
+.team.away{text-align:left}
+.score-inputs,.score-show{display:flex; align-items:center; gap:6px; font-weight:900; font-size:1.2rem}
+.score-inputs input{width:56px; text-align:center; font-size:1.3rem; font-weight:900; padding:10px 4px}
+.x{opacity:.6}
+
+.result-line{margin-top:10px; text-align:center; font-size:.95rem}
+.pts{font-weight:900; padding:3px 8px; border-radius:8px}
+.pts.p4{color:#0b0b16; background:var(--p4)}
+.pts.p2{color:#0b0b16; background:var(--p2)}
+.pts.p1{color:#0b0b16; background:var(--p1)}
+.pts.p0{color:var(--muted)}
+.hint{font-size:.85rem; color:var(--muted); margin:8px 0 0}
+.hint.warn{color:var(--warn)}
+
+.sticky-save{position:sticky; bottom:14px}
+
+/* Tables / ranking */
+table.rank{width:100%; border-collapse:collapse}
+table.rank th,table.rank td{padding:10px 8px; border-bottom:1px solid var(--line); text-align:left}
+table.rank th{color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.04em}
+table.rank td.pos{width:38px; font-size:1.1rem; text-align:center}
+table.rank td.num{text-align:right; font-weight:800; font-variant-numeric:tabular-nums}
+.num.good{color:var(--good)} .num.bad{color:var(--bad)}
+tr.me{background:rgba(124,92,255,.16)}
+tr.me td{font-weight:800}
+table.example td{font-size:.95rem}
+
+/* Rules */
+.rules h2{margin-top:22px}
+ul.points{list-style:none; padding:0; display:flex; flex-direction:column; gap:12px}
+ul.points li{background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:12px}
+.dot{font-size:1.1rem; margin-right:4px}
+
+/* Admin */
+.grid-form{display:grid; gap:10px}
+.admin-match{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line); padding:12px 0;
+}
+.admin-match-info{flex:1; min-width:160px}
+.inline-form{display:flex; align-items:center; gap:6px}
+.inline-form input{width:54px; text-align:center}
+
+.foot{text-align:center; padding:20px; color:var(--muted); font-size:.85rem}
+.foot a.muted{opacity:.5}

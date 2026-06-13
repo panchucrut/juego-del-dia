@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Juego del Día{% endblock %}
+{% block content %}
+<div class="card hero">
+  <h1>⚽ Juego del Día</h1>
+  <p class="big">¡Adivina los marcadores y gana el día! 🏆</p>
+  <form method="post" class="login-form">
+    <label for="name">Escribe tu nombre para entrar:</label>
+    <input id="name" name="name" maxlength="40" placeholder="Tu nombre"
+           autocomplete="off" required autofocus>
+    <button class="btn primary big" type="submit">¡Entrar a jugar! 🎮</button>
+  </form>
+  <p class="muted center">Máximo 15 jugadores · Solo necesitas tu nombre</p>
+  <p class="center"><a href="{{ url_for('reglas') }}">📖 ¿Cómo se juega?</a></p>
+</div>
+{% endblock %}
