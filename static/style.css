@@ -125,6 +125,12 @@ ul.points li{background:var(--bg2); border:1px solid var(--line); border-radius:
 .admin-match-info{flex:1; min-width:160px}
 .inline-form{display:flex; align-items:center; gap:6px}
 .inline-form input{width:54px; text-align:center}
+.edit-match{width:100%; margin-top:6px}
+.edit-match summary{display:inline-block; list-style:none; cursor:pointer}
+.edit-match summary::-webkit-details-marker{display:none}
+.edit-match .grid-form{margin-top:8px; grid-template-columns:1fr 1fr; gap:8px}
+.edit-match .grid-form input[type=datetime-local],
+.edit-match .grid-form button{grid-column:1 / -1}
 
 /* Grid apuestas de todos */
 .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}

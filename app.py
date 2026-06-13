@@ -517,6 +517,32 @@ def admin_resultado(mid):
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/partido/<int:mid>/editar", methods=["POST"])
+def admin_editar(mid):
+    require_admin()
+    m = db.session.get(Match, mid)
+    if not m:
+        abort(404)
+    home = request.form.get("home_team", "").strip()
+    away = request.form.get("away_team", "").strip()
+    ko = request.form.get("kickoff", "").strip()
+    if home:
+        m.home_team = home
+    if away:
+        m.away_team = away
+    if ko:
+        try:
+            kdt = datetime.fromisoformat(ko)
+            m.kickoff = kdt
+            m.match_date = kdt.date()
+        except ValueError:
+            flash("Fecha/hora inválida", "error")
+            return redirect(url_for("admin"))
+    db.session.commit()
+    flash("Partido actualizado ✏️", "ok")
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/partido/<int:mid>/borrar", methods=["POST"])
 def admin_borrar(mid):
     require_admin()

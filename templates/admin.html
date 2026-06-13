@@ -66,6 +66,16 @@
             onsubmit="return confirm('¿Borrar este partido y sus apuestas?');">
         <button class="btn small danger" type="submit">🗑️</button>
       </form>
+      <details class="edit-match">
+        <summary class="btn small">✏️ editar</summary>
+        <form method="post" action="{{ url_for('admin_editar', mid=m.id) }}" class="grid-form">
+          <input name="home_team" value="{{ m.home_team }}" placeholder="Local">
+          <input name="away_team" value="{{ m.away_team }}" placeholder="Visita">
+          <input type="datetime-local" name="kickoff"
+                 value="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M') }}">
+          <button class="btn small" type="submit">Guardar cambios ✏️</button>
+        </form>
+      </details>
     </div>
   {% endfor %}
   <p class="hint">Deja el marcador vacío y guarda para marcar un partido como
