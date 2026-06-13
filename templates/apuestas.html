@@ -35,7 +35,7 @@
       <tbody>
         {% for row in grid %}
           <tr class="{% if row.me %}me{% endif %}">
-            <td class="sticky-col">{{ row.name }}{% if row.me %} <small>(tú)</small>{% endif %}</td>
+            <td class="sticky-col"><span class="pcolor" style="background: {{ row.color }}"></span>{{ row.name }}{% if row.me %} <small>(tú)</small>{% endif %}</td>
             {% for cell in row.cells %}
               <td class="num">
                 {% if cell.shown %}

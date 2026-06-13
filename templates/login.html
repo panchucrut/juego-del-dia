@@ -4,13 +4,35 @@
 <div class="card hero">
   <h1>⚽ Juego del Día</h1>
   <p class="big">¡Adivina los marcadores y gana el día! 🏆</p>
-  <form method="post" class="login-form">
-    <label for="name">Escribe tu nombre para entrar:</label>
-    <input id="name" name="name" maxlength="40" placeholder="Tu nombre"
-           autocomplete="off" required autofocus>
-    <button class="btn primary big" type="submit">¡Entrar a jugar! 🎮</button>
-  </form>
-  <p class="muted center">Máximo 15 jugadores · Solo necesitas tu nombre</p>
+
+  {% if players %}
+    <p>Toca tu nombre para entrar:</p>
+    <div class="player-grid">
+      {% for p in players %}
+        <form method="post" class="pform">
+          <input type="hidden" name="name" value="{{ p.name }}">
+          <button class="player-btn" style="background: {{ colors[p.id] }}" type="submit">
+            {{ p.name }}
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Aún no hay jugadores.</p>
+  {% endif %}
+
+  {% if registration_open %}
+    <details class="newplayer">
+      <summary>➕ Soy nuevo, agregar mi nombre</summary>
+      <form method="post" class="login-form">
+        <input name="name" maxlength="40" placeholder="Tu nombre" autocomplete="off">
+        <button class="btn primary" type="submit">¡Entrar! 🎮</button>
+      </form>
+    </details>
+  {% else %}
+    <p class="muted center">La inscripción está cerrada 🔒</p>
+  {% endif %}
+
   <p class="center"><a href="{{ url_for('reglas') }}">📖 ¿Cómo se juega?</a></p>
 </div>
 {% endblock %}

@@ -6,6 +6,14 @@
 <p class="muted center">{{ players|length }}/15 jugadores ·
   {% if players %}{{ players | map(attribute='name') | join(', ') }}{% else %}sin jugadores aún{% endif %}</p>
 
+<div class="card center">
+  <form method="post" action="{{ url_for('admin_actualizar') }}">
+    <button class="btn primary big" type="submit">🔄 Actualizar resultados ahora</button>
+  </form>
+  <p class="hint">Busca online (ESPN) los marcadores finales de los partidos ya terminados
+     y los carga al toque. (También se cargan solos cada hora.)</p>
+</div>
+
 <div class="card">
   <h2>🧑‍🤝‍🧑 Inscripción</h2>
   <p>Estado:

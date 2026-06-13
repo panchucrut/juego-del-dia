@@ -1,4 +1,7 @@
 import os
+import json
+import urllib.request
+import unicodedata
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
@@ -201,6 +204,103 @@ def registration_open():
     return get_setting("registration_open", "1") == "1"
 
 
+# Colores por jugador (uno distinto para cada uno) ---------------------------
+PALETTE = ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+           '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6',
+           '#a855f7', '#d946ef', '#ec4899']
+
+
+def player_colors():
+    return {p.id: PALETTE[i % len(PALETTE)]
+            for i, p in enumerate(Player.query.order_by(Player.id).all())}
+
+
+# Carga automática de resultados desde ESPN (sin clave) ----------------------
+ES2EN = {
+    'Argelia': 'Algeria', 'Argentina': 'Argentina', 'Australia': 'Australia',
+    'Austria': 'Austria', 'Bélgica': 'Belgium', 'Bosnia': 'Bosnia-Herzegovina',
+    'Brasil': 'Brazil', 'Canadá': 'Canada', 'Cabo Verde': 'Cape Verde',
+    'Colombia': 'Colombia', 'R.D. Congo': 'Congo DR', 'Croacia': 'Croatia',
+    'Curazao': 'Curaçao', 'Rep. Checa': 'Czechia', 'Ecuador': 'Ecuador',
+    'Egipto': 'Egypt', 'Inglaterra': 'England', 'Francia': 'France',
+    'Alemania': 'Germany', 'Ghana': 'Ghana', 'Haití': 'Haiti', 'Irán': 'Iran',
+    'Irak': 'Iraq', 'Costa de Marfil': 'Ivory Coast', 'Japón': 'Japan',
+    'Jordania': 'Jordan', 'México': 'Mexico', 'Marruecos': 'Morocco',
+    'Países Bajos': 'Netherlands', 'Nueva Zelanda': 'New Zealand',
+    'Noruega': 'Norway', 'Panamá': 'Panama', 'Paraguay': 'Paraguay',
+    'Portugal': 'Portugal', 'Qatar': 'Qatar', 'Arabia Saudita': 'Saudi Arabia',
+    'Escocia': 'Scotland', 'Senegal': 'Senegal', 'Sudáfrica': 'South Africa',
+    'Corea del Sur': 'South Korea', 'España': 'Spain', 'Suecia': 'Sweden',
+    'Suiza': 'Switzerland', 'Túnez': 'Tunisia', 'Turquía': 'Türkiye',
+    'Estados Unidos': 'United States', 'Uruguay': 'Uruguay',
+    'Uzbekistán': 'Uzbekistan',
+}
+
+
+def _norm(s):
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def _espn_completed_events(dates):
+    """Lista de dicts {nombre_normalizado: goles} para partidos TERMINADOS."""
+    out = []
+    for d in dates:
+        url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/"
+               "fifa.world/scoreboard?dates=" + d)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+        except Exception:
+            continue
+        for ev in data.get("events", []):
+            try:
+                comp = ev["competitions"][0]
+                if not comp["status"]["type"].get("completed"):
+                    continue
+                out.append({_norm(c["team"]["displayName"]): c.get("score")
+                            for c in comp["competitors"]})
+            except Exception:
+                continue
+    return out
+
+
+def _result_for(home_es, away_es, events):
+    nh, na = _norm(ES2EN.get(home_es, home_es)), _norm(ES2EN.get(away_es, away_es))
+    for teams in events:
+        if nh in teams and na in teams:
+            try:
+                return int(teams[nh]), int(teams[na])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def autoload_results():
+    """Carga marcadores finales (desde ESPN) de partidos terminados sin resultado.
+       Devuelve (cargados, pendientes) como listas de texto."""
+    pend = Match.query.filter(Match.finished.isnot(True),
+                              Match.kickoff <= now_local()).all()
+    if not pend:
+        return [], []
+    dates = set()
+    for m in pend:
+        for off in (-1, 0, 1):
+            dates.add((m.match_date + timedelta(days=off)).strftime("%Y%m%d"))
+    events = _espn_completed_events(sorted(dates))
+    loaded, missed = [], []
+    for m in pend:
+        r = _result_for(m.home_team, m.away_team, events)
+        if r:
+            m.home_score, m.away_score, m.finished = r[0], r[1], True
+            loaded.append(f"{m.home_team} {r[0]}-{r[1]} {m.away_team}")
+        else:
+            missed.append(f"{m.home_team} vs {m.away_team}")
+    db.session.commit()
+    return loaded, missed
+
+
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -257,7 +357,9 @@ def login():
             db.session.commit()
         session["player_id"] = p.id
         return redirect(url_for("jugar"))
-    return render_template("login.html")
+    players = Player.query.order_by(Player.id).all()
+    return render_template("login.html", players=players,
+                           colors=player_colors(), registration_open=registration_open())
 
 
 @app.route("/logout")
@@ -361,11 +463,12 @@ def ranking():
         fecha = fecha_default()
 
     players = {p.id: p for p in Player.query.all()}
+    cols = player_colors()
     day_rows, day_complete = [], False
     if fecha:
         scores, awards, matches, finished = day_ranking(fecha)
         day_complete = bool(matches) and all(m.finished for m in matches)
-        rows = [dict(name=players[pid].name, score=sc,
+        rows = [dict(name=players[pid].name, score=sc, color=cols.get(pid),
                      award=awards.get(pid, 0), me=(pid == g.player.id))
                 for pid, sc in scores.items()]
         rows.sort(key=lambda r: (-r["score"], r["name"].lower()))
@@ -373,7 +476,7 @@ def ranking():
 
     overall = overall_ranking()
     gen = [dict(name=players[pid].name, award=d["award"], bet=d["bet"],
-                me=(pid == g.player.id))
+                color=cols.get(pid), me=(pid == g.player.id))
            for pid, d in overall.items()]
     gen.sort(key=lambda r: (-r["award"], -r["bet"], r["name"].lower()))
 
@@ -407,6 +510,7 @@ def apuestas():
             bet_map[(b.player_id, b.match_id)] = b
 
     cols = [dict(m=m, locked=is_locked(m)) for m in matches]
+    pcol = player_colors()
     grid = []
     for p in Player.query.order_by(Player.name).all():
         cells = []
@@ -420,7 +524,8 @@ def apuestas():
                                   pts=pts, default=(b is None)))
             else:
                 cells.append(dict(shown=False))
-        grid.append(dict(name=p.name, me=(p.id == g.player.id), cells=cells))
+        grid.append(dict(name=p.name, color=pcol.get(p.id),
+                         me=(p.id == g.player.id), cells=cells))
     return render_template("apuestas.html", fecha=fecha, fechas=fs,
                            cols=cols, grid=grid)
 
@@ -466,6 +571,15 @@ def api_resultado():
                    score=f"{m.home_score}-{m.away_score}")
 
 
+@app.route("/api/actualizar", methods=["POST"])
+def api_actualizar():
+    """Busca en ESPN y carga los resultados finales pendientes. Form: pin."""
+    if request.form.get("pin") != ADMIN_PIN:
+        return jsonify(error="pin"), 403
+    loaded, missed = autoload_results()
+    return jsonify(ok=True, cargados=loaded, pendientes=missed)
+
+
 # ----------------------------------------------------------------------------
 # Rutas: organizador (admin)
 # ----------------------------------------------------------------------------
@@ -491,6 +605,22 @@ def admin_inscripcion():
     require_admin()
     set_setting("registration_open", "0" if registration_open() else "1")
     flash("Inscripción " + ("abierta ✅" if registration_open() else "cerrada 🔒"), "ok")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/actualizar", methods=["POST"])
+def admin_actualizar():
+    require_admin()
+    loaded, missed = autoload_results()
+    if not loaded and not missed:
+        flash("No hay partidos terminados pendientes de resultado. ✅", "ok")
+    else:
+        msg = f"🔄 Cargué {len(loaded)} resultado(s)."
+        if loaded:
+            msg += " " + "; ".join(loaded) + "."
+        if missed:
+            msg += f" ⏳ Aún sin marcador final: {', '.join(missed)}."
+        flash(msg, "ok")
     return redirect(url_for("admin"))
 
 

@@ -16,7 +16,7 @@
             {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈
             {% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
           </td>
-          <td>{{ r.name }}{% if r.me %} <small>(tú)</small>{% endif %}</td>
+          <td><span class="pcolor" style="background: {{ r.color }}"></span>{{ r.name }}{% if r.me %} <small>(tú)</small>{% endif %}</td>
           <td class="num {% if r.award > 0 %}good{% elif r.award < 0 %}bad{% endif %}">
             {{ '%+g' % r.award }}
           </td>
@@ -52,7 +52,7 @@
             <td class="pos">
               {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% else %}{{ loop.index }}{% endif %}
             </td>
-            <td>{{ r.name }}{% if r.me %} <small>(tú)</small>{% endif %}</td>
+            <td><span class="pcolor" style="background: {{ r.color }}"></span>{{ r.name }}{% if r.me %} <small>(tú)</small>{% endif %}</td>
             <td class="num">{{ r.score }}</td>
             <td class="num {% if r.award > 0 %}good{% elif r.award < 0 %}bad{% endif %}">
               {{ '%+g' % r.award }}
