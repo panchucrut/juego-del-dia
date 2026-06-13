@@ -1,9 +1,9 @@
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, flash, abort, g)
+                   session, flash, abort, g, jsonify)
 from flask_sqlalchemy import SQLAlchemy
 
 # ----------------------------------------------------------------------------
@@ -428,6 +428,42 @@ def apuestas():
 @app.route("/reglas")
 def reglas():
     return render_template("reglas.html")
+
+
+# --------------------------------------------------------------------------
+# API para automatizar la carga de resultados (protegida por PIN)
+# --------------------------------------------------------------------------
+@app.route("/api/pendientes")
+def api_pendientes():
+    """Partidos que ya terminaron (kickoff hace +2.5h) y aún sin resultado."""
+    if request.args.get("pin") != ADMIN_PIN:
+        return jsonify(error="pin"), 403
+    cutoff = now_local() - timedelta(minutes=150)
+    ms = (Match.query
+          .filter(Match.finished.isnot(True), Match.kickoff <= cutoff)
+          .order_by(Match.kickoff).all())
+    return jsonify([dict(id=m.id, home=m.home_team, away=m.away_team,
+                         kickoff=m.kickoff.strftime("%Y-%m-%dT%H:%M")) for m in ms])
+
+
+@app.route("/api/resultado", methods=["POST"])
+def api_resultado():
+    """Carga el marcador final de un partido. Form: pin, match_id, home_score, away_score."""
+    if request.form.get("pin") != ADMIN_PIN:
+        return jsonify(error="pin"), 403
+    mid = request.form.get("match_id", "")
+    m = db.session.get(Match, int(mid)) if mid.isdigit() else None
+    if not m:
+        return jsonify(error="match"), 404
+    try:
+        m.home_score = int(request.form["home_score"])
+        m.away_score = int(request.form["away_score"])
+        m.finished = True
+    except (KeyError, ValueError):
+        return jsonify(error="score"), 400
+    db.session.commit()
+    return jsonify(ok=True, id=m.id, home=m.home_team, away=m.away_team,
+                   score=f"{m.home_score}-{m.away_score}")
 
 
 # ----------------------------------------------------------------------------
