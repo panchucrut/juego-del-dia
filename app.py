@@ -211,8 +211,9 @@ PALETTE = ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
 
 
 def player_colors():
-    return {p.id: PALETTE[i % len(PALETTE)]
-            for i, p in enumerate(Player.query.order_by(Player.id).all())}
+    # color estable por jugador (basado en su id, no en su posición)
+    return {p.id: PALETTE[(p.id - 1) % len(PALETTE)]
+            for p in Player.query.all()}
 
 
 # Carga automática de resultados desde ESPN (sin clave) ----------------------
@@ -608,6 +609,19 @@ def admin_inscripcion():
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/jugador/<int:pid>/borrar", methods=["POST"])
+def admin_borrar_jugador(pid):
+    require_admin()
+    p = db.session.get(Player, pid)
+    if p:
+        name = p.name
+        Bet.query.filter_by(player_id=pid).delete()
+        db.session.delete(p)
+        db.session.commit()
+        flash(f"Jugador {name} eliminado 🗑️", "ok")
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/actualizar", methods=["POST"])
 def admin_actualizar():
     require_admin()
@@ -636,7 +650,8 @@ def admin():
     matches = Match.query.order_by(Match.kickoff).all()
     players = Player.query.order_by(Player.name).all()
     return render_template("admin.html", matches=matches, players=players,
-                           now=now_local(), registration_open=registration_open())
+                           now=now_local(), registration_open=registration_open(),
+                           colors=player_colors())
 
 
 @app.route("/admin/partido", methods=["POST"])

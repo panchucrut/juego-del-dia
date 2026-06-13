@@ -32,6 +32,23 @@
 </div>
 
 <div class="card">
+  <h2>👥 Jugadores ({{ players|length }})</h2>
+  {% if not players %}<p class="muted">Sin jugadores aún.</p>{% endif %}
+  <div class="player-list">
+    {% for p in players %}
+      <div class="player-chip">
+        <span class="pcolor" style="background: {{ colors[p.id] }}"></span>{{ p.name }}
+        <form method="post" action="{{ url_for('admin_borrar_jugador', pid=p.id) }}"
+              onsubmit="return confirm('¿Borrar a {{ p.name }} y sus apuestas?');" style="display:inline">
+          <button class="btn small danger" type="submit">✕</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+  <p class="hint">Borrar un jugador elimina también sus apuestas.</p>
+</div>
+
+<div class="card">
   <h2>➕ Agregar partido</h2>
   <form method="post" action="{{ url_for('admin_crear') }}" class="grid-form">
     <div><label>Equipo local</label>

@@ -137,6 +137,10 @@ ul.points li{background:var(--bg2); border:1px solid var(--line); border-radius:
 .admin-match-info{flex:1; min-width:160px}
 .inline-form{display:flex; align-items:center; gap:6px}
 .inline-form input{width:54px; text-align:center}
+.player-list{display:flex; flex-wrap:wrap; gap:8px}
+.player-chip{display:flex; align-items:center; gap:6px; background:var(--bg2);
+  border:1px solid var(--line); border-radius:999px; padding:6px 8px 6px 12px; font-weight:700}
+.player-chip .btn.small{padding:2px 9px; line-height:1}
 .edit-match{width:100%; margin-top:6px}
 .edit-match summary{display:inline-block; list-style:none; cursor:pointer}
 .edit-match summary::-webkit-details-marker{display:none}
