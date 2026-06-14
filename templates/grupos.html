@@ -8,7 +8,7 @@
     {% for r in rows %}
       <tr class="{% if loop.index <= 2 %}adv{% endif %}">
         <td class="pos">{{ loop.index }}</td>
-        <td class="gt-team" title="{{ r.team }}">{{ r.team }}</td>
+        <td class="gt-team"><span title="{{ r.team }}">{{ r.team }}</span></td>
         <td class="num">{{ r.pj }}</td>
         <td class="num">{{ '%+d' % r.dg }}</td>
         <td class="num pts-col">{{ r.pts }}</td>

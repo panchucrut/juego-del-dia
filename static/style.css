@@ -170,12 +170,13 @@ tr.me .sticky-col{background:#2a2a5a}
   margin-bottom:6px; font-size:.85rem}
 .gcol-h.pred{background:rgba(124,92,255,.25); color:#cdbcff}
 .gcol-h.real{background:rgba(52,211,153,.2); color:#9af0cf}
-table.gtable{width:100%; border-collapse:collapse; font-size:.85rem; table-layout:fixed}
+table.gtable{width:100%; border-collapse:collapse; font-size:.85rem}
 table.gtable th{font-size:.62rem; color:var(--muted); padding:2px 1px; text-transform:uppercase}
 table.gtable td{padding:6px 2px; border-bottom:1px solid var(--line)}
 .gtable .pos{width:16px; text-align:center; color:var(--muted)}
-.gt-team{font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.gtable .num{text-align:right; width:24px; font-variant-numeric:tabular-nums}
+.gt-team{font-weight:700; width:99%}
+.gt-team span{display:block; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.gtable .num{text-align:right; width:26px; font-variant-numeric:tabular-nums; white-space:nowrap}
 .gtable th:nth-child(2){text-align:left}
 .gtable .pts-col{font-weight:900}
 tr.adv .gt-team{color:#34d399}
@@ -184,7 +185,8 @@ tr.adv .pos{color:#34d399; font-weight:800}
   .group-cols{gap:7px}
   table.gtable{font-size:.74rem}
   table.gtable td{padding:5px 1px}
-  .gtable .num{width:20px}
+  .gtable .num{width:22px}
+  .gt-team span{max-width:74px}
 }
 
 .foot{text-align:center; padding:20px; color:var(--muted); font-size:.85rem}
