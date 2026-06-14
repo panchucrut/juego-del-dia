@@ -82,6 +82,7 @@ input:focus{outline:2px solid var(--pri2)}
   border-radius:999px; font-weight:700; white-space:nowrap; color:var(--ink);
 }
 .chip.active{background:linear-gradient(135deg,var(--pri),var(--pri2)); border-color:transparent; color:#fff}
+.chip.past:not(.active){background:transparent; border-color:var(--line); color:var(--muted); opacity:.5}
 
 /* Match card */
 .match.locked{opacity:.85}

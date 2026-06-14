@@ -372,7 +372,8 @@ def load_player():
 @app.context_processor
 def inject_globals():
     return dict(current_player=getattr(g, "player", None),
-                is_admin=session.get("is_admin", False))
+                is_admin=session.get("is_admin", False),
+                hoy=now_local().date())
 
 
 # ----------------------------------------------------------------------------

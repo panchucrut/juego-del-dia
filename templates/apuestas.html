@@ -8,7 +8,7 @@
 
 <div class="daybar">
   {% for f in fechas %}
-    <a class="chip {% if f == fecha %}active{% endif %}"
+    <a class="chip {% if f == fecha %}active{% endif %}{% if f < hoy %} past{% endif %}"
        href="{{ url_for('apuestas', fecha=f.isoformat()) }}">{{ f.day }}/{{ f.month }}</a>
   {% endfor %}
 </div>
