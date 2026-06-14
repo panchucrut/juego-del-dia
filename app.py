@@ -216,6 +216,53 @@ def player_colors():
             for p in Player.query.all()}
 
 
+# Grupo de cada equipo (fase de grupos Mundial 2026) -------------------------
+TEAM_GROUP = {
+    'México': 'A', 'Sudáfrica': 'A', 'Corea del Sur': 'A', 'Rep. Checa': 'A',
+    'Canadá': 'B', 'Bosnia': 'B', 'Qatar': 'B', 'Suiza': 'B',
+    'Brasil': 'C', 'Marruecos': 'C', 'Haití': 'C', 'Escocia': 'C',
+    'Estados Unidos': 'D', 'Paraguay': 'D', 'Australia': 'D', 'Turquía': 'D',
+    'Alemania': 'E', 'Curazao': 'E', 'Costa de Marfil': 'E', 'Ecuador': 'E',
+    'Países Bajos': 'F', 'Japón': 'F', 'Suecia': 'F', 'Túnez': 'F',
+    'Bélgica': 'G', 'Egipto': 'G', 'Irán': 'G', 'Nueva Zelanda': 'G',
+    'España': 'H', 'Cabo Verde': 'H', 'Arabia Saudita': 'H', 'Uruguay': 'H',
+    'Francia': 'I', 'Senegal': 'I', 'Irak': 'I', 'Noruega': 'I',
+    'Argentina': 'J', 'Argelia': 'J', 'Austria': 'J', 'Jordania': 'J',
+    'Portugal': 'K', 'R.D. Congo': 'K', 'Uzbekistán': 'K', 'Colombia': 'K',
+    'Inglaterra': 'L', 'Croacia': 'L', 'Ghana': 'L', 'Panamá': 'L',
+}
+
+
+def _standings(teams, matches, score_fn):
+    """Tabla de posiciones. score_fn(m) -> (gl_local, gl_visita) o None para omitir.
+       3 pts gana, 1 empate. Orden: pts, dif. gol, goles a favor, nombre."""
+    tab = {t: {"team": t, "pj": 0, "pts": 0, "gf": 0, "gc": 0} for t in teams}
+    for m in matches:
+        sc = score_fn(m)
+        if sc is None:
+            continue
+        hs, as_ = sc
+        h, a = m.home_team, m.away_team
+        if h not in tab or a not in tab:
+            continue
+        tab[h]["pj"] += 1
+        tab[a]["pj"] += 1
+        tab[h]["gf"] += hs; tab[h]["gc"] += as_
+        tab[a]["gf"] += as_; tab[a]["gc"] += hs
+        if hs > as_:
+            tab[h]["pts"] += 3
+        elif hs < as_:
+            tab[a]["pts"] += 3
+        else:
+            tab[h]["pts"] += 1
+            tab[a]["pts"] += 1
+    rows = list(tab.values())
+    for r in rows:
+        r["dg"] = r["gf"] - r["gc"]
+    rows.sort(key=lambda r: (-r["pts"], -r["dg"], -r["gf"], r["team"].lower()))
+    return rows
+
+
 # Carga automática de resultados desde ESPN (sin clave) ----------------------
 ES2EN = {
     'Argelia': 'Algeria', 'Argentina': 'Argentina', 'Australia': 'Australia',
@@ -529,6 +576,43 @@ def apuestas():
                          me=(p.id == g.player.id), cells=cells))
     return render_template("apuestas.html", fecha=fecha, fechas=fs,
                            cols=cols, grid=grid)
+
+
+@app.route("/grupos")
+def grupos():
+    if not g.player:
+        return redirect(url_for("login"))
+    matches = Match.query.all()
+    by_group = {}
+    for m in matches:
+        gl = TEAM_GROUP.get(m.home_team)
+        if gl:
+            by_group.setdefault(gl, []).append(m)
+    teams_by_group = {}
+    for t, gl in TEAM_GROUP.items():
+        teams_by_group.setdefault(gl, []).append(t)
+
+    my = {b.match_id: b for b in Bet.query.filter_by(player_id=g.player.id)}
+
+    def pred_score(m):
+        b = my.get(m.id)
+        return (b.home_pred, b.away_pred) if b else (0, 0)
+
+    def real_score(m):
+        return (m.home_score, m.away_score) if m.finished else None
+
+    groups = []
+    for gl in sorted(by_group):
+        ms = by_group[gl]
+        teams = teams_by_group.get(gl, [])
+        groups.append(dict(
+            letter=gl,
+            pred=_standings(teams, ms, pred_score),
+            real=_standings(teams, ms, real_score),
+            jugados=sum(1 for m in ms if m.finished),
+            total=len(ms),
+        ))
+    return render_template("grupos.html", groups=groups)
 
 
 @app.route("/reglas")
