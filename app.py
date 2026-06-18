@@ -596,6 +596,9 @@ def grupos():
     my = {b.match_id: b for b in Bet.query.filter_by(player_id=g.player.id)}
 
     def pred_score(m):
+        # partidos ya jugados: resultado real; los que faltan: tu apuesta (0-0 si no hay)
+        if m.finished:
+            return (m.home_score, m.away_score)
         b = my.get(m.id)
         return (b.home_pred, b.away_pred) if b else (0, 0)
 
