@@ -52,6 +52,7 @@ class Match(db.Model):
     away_score = db.Column(db.Integer)
     finished = db.Column(db.Boolean, default=False)
     stage = db.Column(db.String(20), default="grupos")    # grupos | eliminacion
+    round = db.Column(db.String(10))                       # r32 r16 qf sf final 3p
 
 
 class Bet(db.Model):
@@ -78,7 +79,9 @@ with app.app_context():
         if "stage" not in cols:
             db.session.execute(
                 text("ALTER TABLE match ADD COLUMN stage VARCHAR(20) DEFAULT 'grupos'"))
-            db.session.commit()
+        if "round" not in cols:
+            db.session.execute(text("ALTER TABLE match ADD COLUMN round VARCHAR(10)"))
+        db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -443,9 +446,10 @@ def load_player():
 
 @app.context_processor
 def inject_globals():
+    fase2 = db.session.query(Match.id).filter_by(stage="eliminacion").first() is not None
     return dict(current_player=getattr(g, "player", None),
                 is_admin=session.get("is_admin", False),
-                hoy=now_local().date())
+                hoy=now_local().date(), fase2=fase2)
 
 
 # ----------------------------------------------------------------------------
@@ -710,6 +714,38 @@ def eliminacion():
                            grid=grid, total_ko=len(knockout_matches()))
 
 
+ROUND_LABELS = {"r32": "16avos", "r16": "Octavos", "qf": "Cuartos",
+                "sf": "Semifinal", "final": "Final", "3p": "3er puesto"}
+ROUND_ORDER = ["r32", "r16", "qf", "sf", "final", "3p"]
+
+
+@app.route("/llaves")
+def llaves():
+    if not g.player:
+        return redirect(url_for("login"))
+    ms = knockout_matches()
+
+    def item(m):
+        win = None
+        if m.finished and m.home_score is not None and m.away_score is not None:
+            if m.home_score > m.away_score:
+                win = "home"
+            elif m.away_score > m.home_score:
+                win = "away"
+        return dict(m=m, win=win)
+
+    rounds = []
+    for rk in ROUND_ORDER:
+        rms = [m for m in ms if (m.round or "") == rk]
+        if rms:
+            rounds.append(dict(label=ROUND_LABELS[rk],
+                               matches=[item(m) for m in rms]))
+    sinronda = [m for m in ms if (m.round or "") not in ROUND_LABELS]
+    if sinronda:
+        rounds.append(dict(label="Eliminación", matches=[item(m) for m in sinronda]))
+    return render_template("llaves.html", rounds=rounds, any_ko=bool(ms))
+
+
 @app.route("/reglas")
 def reglas():
     return render_template("reglas.html")
@@ -857,8 +893,10 @@ def admin_crear():
         flash("Fecha/hora inválida", "error")
         return redirect(url_for("admin"))
     stage = "eliminacion" if request.form.get("stage") == "eliminacion" else "grupos"
+    rnd = request.form.get("round", "")
+    rnd = rnd if rnd in ROUND_LABELS else None
     db.session.add(Match(home_team=home, away_team=away,
-                         kickoff=kdt, match_date=kdt.date(), stage=stage))
+                         kickoff=kdt, match_date=kdt.date(), stage=stage, round=rnd))
     db.session.commit()
     flash("Partido agregado ⚽", "ok")
     return redirect(url_for("admin"))
@@ -911,6 +949,9 @@ def admin_editar(mid):
     st = request.form.get("stage", "")
     if st in ("grupos", "eliminacion"):
         m.stage = st
+    rnd = request.form.get("round", "__keep__")
+    if rnd != "__keep__":
+        m.round = rnd if rnd in ROUND_LABELS else None
     db.session.commit()
     flash("Partido actualizado ✏️", "ok")
     return redirect(url_for("admin"))

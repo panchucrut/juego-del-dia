@@ -62,6 +62,16 @@
         <option value="grupos">Fase de grupos</option>
         <option value="eliminacion">Eliminación</option>
       </select></div>
+    <div><label>Ronda (solo eliminación)</label>
+      <select name="round">
+        <option value="">—</option>
+        <option value="r32">16avos</option>
+        <option value="r16">Octavos</option>
+        <option value="qf">Cuartos</option>
+        <option value="sf">Semifinal</option>
+        <option value="final">Final</option>
+        <option value="3p">3er puesto</option>
+      </select></div>
     <button class="btn primary" type="submit">Agregar ⚽</button>
   </form>
   <p class="hint">El "día" del partido se toma de la fecha que pongas aquí.
@@ -107,6 +117,15 @@
           <select name="stage">
             <option value="grupos" {% if m.stage != 'eliminacion' %}selected{% endif %}>Fase de grupos</option>
             <option value="eliminacion" {% if m.stage == 'eliminacion' %}selected{% endif %}>Eliminación</option>
+          </select>
+          <select name="round">
+            <option value="" {% if not m.round %}selected{% endif %}>— sin ronda</option>
+            <option value="r32" {% if m.round=='r32' %}selected{% endif %}>16avos</option>
+            <option value="r16" {% if m.round=='r16' %}selected{% endif %}>Octavos</option>
+            <option value="qf" {% if m.round=='qf' %}selected{% endif %}>Cuartos</option>
+            <option value="sf" {% if m.round=='sf' %}selected{% endif %}>Semifinal</option>
+            <option value="final" {% if m.round=='final' %}selected{% endif %}>Final</option>
+            <option value="3p" {% if m.round=='3p' %}selected{% endif %}>3er puesto</option>
           </select>
           <button class="btn small" type="submit">Guardar cambios ✏️</button>
         </form>

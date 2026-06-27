@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Llaves · Juego del Día{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block content %}
+
+<h1 class="day-title">🗺️ Llaves</h1>
+<p class="muted center">El cuadro de la eliminación. Se va llenando con los resultados;
+   el que gana avanza (en <b style="color:#34d399">verde</b>).</p>
+
+{% if not any_ko %}
+  <div class="card center"><p class="muted">Todavía no hay partidos de eliminación cargados.</p></div>
+{% else %}
+<div class="bracket">
+  {% for r in rounds %}
+    <div class="round-col">
+      <div class="round-h">{{ r.label }}</div>
+      {% for it in r.matches %}
+        <div class="bk-match">
+          <div class="bk-team {% if it.win == 'home' %}adv{% endif %}">
+            <span class="bk-name">{{ it.m.home_team }}</span>
+            <span class="bk-score">{% if it.m.finished %}{{ it.m.home_score }}{% endif %}</span>
+          </div>
+          <div class="bk-team {% if it.win == 'away' %}adv{% endif %}">
+            <span class="bk-name">{{ it.m.away_team }}</span>
+            <span class="bk-score">{% if it.m.finished %}{{ it.m.away_score }}{% endif %}</span>
+          </div>
+          <div class="bk-when">
+            {% if it.m.finished %}Final
+            {% else %}{{ it.m.match_date.day }}/{{ it.m.match_date.month }} {{ it.m.kickoff.strftime('%H:%M') }}{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>
+<p class="muted center">Desliza de lado para ver todas las rondas →</p>
+{% endif %}
+{% endblock %}

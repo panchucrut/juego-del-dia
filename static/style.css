@@ -190,5 +190,24 @@ tr.adv .pos{color:#34d399; font-weight:800}
   .gt-team span{max-width:74px}
 }
 
+/* Llaves (bracket) */
+.bracket{display:flex; gap:14px; overflow-x:auto; padding:6px 2px 14px;
+  -webkit-overflow-scrolling:touch; align-items:flex-start}
+.round-col{flex:0 0 auto; width:170px; display:flex; flex-direction:column; gap:12px;
+  justify-content:space-around}
+.round-h{text-align:center; font-weight:800; font-size:.85rem; color:#cdbcff;
+  background:rgba(124,92,255,.18); border-radius:9px; padding:6px}
+.bk-match{background:var(--card); border:1px solid var(--line); border-radius:12px;
+  padding:8px; box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.bk-team{display:flex; justify-content:space-between; align-items:center; gap:6px;
+  padding:3px 2px; font-weight:700}
+.bk-team + .bk-team{border-top:1px solid var(--line)}
+.bk-name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px}
+.bk-score{font-weight:900; font-variant-numeric:tabular-nums; min-width:14px; text-align:right}
+.bk-team.adv .bk-name{color:#34d399}
+.bk-team.adv .bk-score{color:#34d399}
+.bk-team:not(.adv){opacity:.92}
+.bk-when{text-align:center; font-size:.72rem; color:var(--muted); margin-top:5px}
+
 .foot{text-align:center; padding:20px; color:var(--muted); font-size:.85rem}
 .foot a.muted{opacity:.5}
