@@ -53,6 +53,7 @@ class Match(db.Model):
     finished = db.Column(db.Boolean, default=False)
     stage = db.Column(db.String(20), default="grupos")    # grupos | eliminacion
     round = db.Column(db.String(10))                       # r32 r16 qf sf final 3p
+    ext_id = db.Column(db.String(30))                      # id de evento ESPN (sync knockout)
 
 
 class Bet(db.Model):
@@ -81,6 +82,8 @@ with app.app_context():
                 text("ALTER TABLE match ADD COLUMN stage VARCHAR(20) DEFAULT 'grupos'"))
         if "round" not in cols:
             db.session.execute(text("ALTER TABLE match ADD COLUMN round VARCHAR(10)"))
+        if "ext_id" not in cols:
+            db.session.execute(text("ALTER TABLE match ADD COLUMN ext_id VARCHAR(30)"))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -422,6 +425,98 @@ def autoload_results():
             missed.append(f"{m.home_team} vs {m.away_team}")
     db.session.commit()
     return loaded, missed
+
+
+# --- Sincronización del cuadro de eliminación desde ESPN (bracket auto) ------
+import re as _re
+
+KO_ROUND_BY_DATE = {
+    "2026-06-28": "r32", "2026-06-29": "r32", "2026-06-30": "r32",
+    "2026-07-01": "r32", "2026-07-02": "r32", "2026-07-03": "r32",
+    "2026-07-04": "r16", "2026-07-05": "r16", "2026-07-06": "r16",
+    "2026-07-07": "r16", "2026-07-09": "qf", "2026-07-10": "qf",
+    "2026-07-11": "qf", "2026-07-14": "sf", "2026-07-15": "sf",
+    "2026-07-18": "3p", "2026-07-19": "final",
+}
+EN2ES = {v: k for k, v in ES2EN.items()}
+
+
+def _ko_name(s):
+    """Nombre ESPN → español (equipo real) o placeholder legible (TBD)."""
+    if s in EN2ES:
+        return EN2ES[s]
+    s = _re.sub(r"Round of 32 (\d+) Winner", r"Ganador 16avos \1", s)
+    s = _re.sub(r"Round of 16 (\d+) Winner", r"Ganador 8vos \1", s)
+    s = _re.sub(r"Quarterfinal (\d+) Winner", r"Ganador Cuartos \1", s)
+    s = _re.sub(r"Semifinal (\d+) Winner", r"Ganador Semi \1", s)
+    s = _re.sub(r"Semifinal (\d+) Loser", r"Perdedor Semi \1", s)
+    s = _re.sub(r"Group (\w+) Winner", r"1º Grupo \1", s)
+    s = _re.sub(r"Group (\w+) (?:2nd Place|Runner.?Up)", r"2º Grupo \1", s)
+    s = _re.sub(r"Third Place Group [\w/]+", "3º grupo (def.)", s)
+    return s[:40]
+
+
+def _espn_day_events(ds):
+    url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/"
+           "fifa.world/scoreboard?dates=" + ds)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode()).get("events", [])
+
+
+def sync_knockout():
+    """Crea/actualiza partidos de eliminación desde ESPN (equipos, hora, ronda,
+       resultados). El cuadro se llena solo. Devuelve nº de partidos tocados."""
+    existing = Match.query.filter_by(stage="eliminacion").count()
+    if existing < 32:                                  # carga inicial completa
+        start, end = date(2026, 6, 28), date(2026, 7, 20)
+    else:                                              # ventana móvil (más liviano)
+        t = now_local().date()
+        start, end = t - timedelta(days=1), t + timedelta(days=5)
+    dlist, dd = [], start
+    while dd <= end:
+        dlist.append(dd.strftime("%Y%m%d"))
+        dd += timedelta(days=1)
+    touched = 0
+    for ds in dlist:
+        try:
+            evs = _espn_day_events(ds)
+        except Exception:
+            continue
+        for ev in evs:
+            try:
+                cl = (datetime.fromisoformat(ev["date"].replace("Z", "+00:00"))
+                      .astimezone(TZ).replace(tzinfo=None))
+                rnd = KO_ROUND_BY_DATE.get(cl.date().isoformat())
+                if not rnd:
+                    continue
+                comp = ev["competitions"][0]
+                st = comp["status"]["type"]
+                cs = comp["competitors"]
+                h = next(c for c in cs if c["homeAway"] == "home")
+                a = next(c for c in cs if c["homeAway"] == "away")
+                eid = str(ev["id"])
+                m = Match.query.filter_by(ext_id=eid).first()
+                if not m:
+                    m = Match(ext_id=eid, stage="eliminacion")
+                    db.session.add(m)
+                m.home_team = _ko_name(h["team"]["displayName"])
+                m.away_team = _ko_name(a["team"]["displayName"])
+                m.kickoff = cl
+                m.match_date = cl.date()
+                m.round = rnd
+                if st.get("completed"):
+                    try:
+                        m.home_score = int(h.get("score"))
+                        m.away_score = int(a.get("score"))
+                        m.finished = True
+                    except (TypeError, ValueError):
+                        pass
+                touched += 1
+            except Exception:
+                continue
+    db.session.commit()
+    return touched
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -798,11 +893,16 @@ def api_actualizar():
 
 @app.route("/cron")
 def cron():
-    """Endpoint para un pinger externo (UptimeRobot): mantiene la app despierta
-       y carga resultados finales desde ESPN. Solo consulta ESPN si hay partidos
-       terminados sin resultado (si no, responde al instante)."""
+    """Endpoint para un pinger externo (UptimeRobot): mantiene la app despierta,
+       sincroniza el cuadro de eliminación desde ESPN (equipos/horas/rondas/resultados)
+       y carga resultados de grupos pendientes."""
+    ko = 0
+    try:
+        ko = sync_knockout()
+    except Exception:
+        db.session.rollback()
     loaded, missed = autoload_results()
-    return jsonify(ok=True, cargados=loaded, pendientes=missed)
+    return jsonify(ok=True, knockout_sync=ko, cargados=loaded, pendientes=missed)
 
 
 # ----------------------------------------------------------------------------
