@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Eliminación · Juego del Día{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block content %}
+
+<h1 class="day-title">🏆 Eliminación</h1>
+<p class="muted center">Fase 2, desde cero. En cada partido se ordena a los 9 según
+   quién apostó mejor y se reparten <b>9-8-…-1</b> puntos. Se van <b>acumulando</b>.</p>
+
+{% if total_ko == 0 %}
+  <div class="card center"><p class="muted">Todavía no hay partidos de eliminación cargados.</p></div>
+{% else %}
+
+<div class="card">
+  <table class="rank">
+    <thead><tr><th>#</th><th>Jugador</th><th>Puntos</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+        <tr class="{% if r.me %}me{% endif %}">
+          <td class="pos">
+            {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈
+            {% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+          </td>
+          <td><span class="pcolor" style="background: {{ r.color }}"></span>{{ r.name }}{% if r.me %} <small>(tú)</small>{% endif %}</td>
+          <td class="num good">{{ '%g' % r.pts }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if matches %}
+  <h2 class="day-title">📋 Punto por partido</h2>
+  <div class="card table-scroll">
+    <table class="rank grid">
+      <thead>
+        <tr>
+          <th class="sticky-col">Jugador</th>
+          {% for m in matches %}
+            <th>{{ m.home_team }}<br><small class="muted">vs</small><br>{{ m.away_team }}<br>
+              <span class="badge done">{{ m.home_score }}-{{ m.away_score }}</span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in grid %}
+          <tr class="{% if row.me %}me{% endif %}">
+            <td class="sticky-col"><span class="pcolor" style="background: {{ row.color }}"></span>{{ row.name }}{% if row.me %} <small>(tú)</small>{% endif %}</td>
+            {% for c in row.cells %}
+              <td class="num">{% if c is not none %}{{ '%g' % c }}{% else %}–{% endif %}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="muted center">Aún no se juega ningún partido de eliminación. Las apuestas se
+     hacen en <b>Jugar</b> como siempre.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -57,6 +57,11 @@
       <input name="away_team" placeholder="Ej: Perú" required></div>
     <div><label>Día y hora del partido (hora de Chile)</label>
       <input type="datetime-local" name="kickoff" required></div>
+    <div><label>Fase</label>
+      <select name="stage">
+        <option value="grupos">Fase de grupos</option>
+        <option value="eliminacion">Eliminación</option>
+      </select></div>
     <button class="btn primary" type="submit">Agregar ⚽</button>
   </form>
   <p class="hint">El "día" del partido se toma de la fecha que pongas aquí.
@@ -76,6 +81,7 @@
           {{ m.kickoff.strftime('%H:%M') }}
           {% if m.kickoff <= now %}· <span class="badge live">cerrado 🔒</span>
           {% else %}· <span class="badge open">abierto ✏️</span>{% endif %}
+          {% if m.stage == 'eliminacion' %}· <span class="badge done">🏆 Eliminación</span>{% endif %}
         </small>
       </div>
       <form method="post" action="{{ url_for('admin_resultado', mid=m.id) }}"
@@ -98,6 +104,10 @@
           <input name="away_team" value="{{ m.away_team }}" placeholder="Visita">
           <input type="datetime-local" name="kickoff"
                  value="{{ m.kickoff.strftime('%Y-%m-%dT%H:%M') }}">
+          <select name="stage">
+            <option value="grupos" {% if m.stage != 'eliminacion' %}selected{% endif %}>Fase de grupos</option>
+            <option value="eliminacion" {% if m.stage == 'eliminacion' %}selected{% endif %}>Eliminación</option>
+          </select>
           <button class="btn small" type="submit">Guardar cambios ✏️</button>
         </form>
       </details>

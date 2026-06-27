@@ -51,6 +51,7 @@ class Match(db.Model):
     home_score = db.Column(db.Integer)
     away_score = db.Column(db.Integer)
     finished = db.Column(db.Boolean, default=False)
+    stage = db.Column(db.String(20), default="grupos")    # grupos | eliminacion
 
 
 class Bet(db.Model):
@@ -70,6 +71,16 @@ class Setting(db.Model):
 
 with app.app_context():
     db.create_all()
+    # migración: agregar columna 'stage' si falta (DB ya existente)
+    try:
+        from sqlalchemy import inspect, text
+        cols = [c["name"] for c in inspect(db.engine).get_columns("match")]
+        if "stage" not in cols:
+            db.session.execute(
+                text("ALTER TABLE match ADD COLUMN stage VARCHAR(20) DEFAULT 'grupos'"))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 # ----------------------------------------------------------------------------
@@ -127,9 +138,11 @@ def day_awards(scores):
 
 
 def day_ranking(fecha):
-    """Devuelve (scores, awards, matches, finished) para un dia.
+    """Devuelve (scores, awards, matches, finished) para un dia (solo fase de grupos).
        Incluye a TODOS los jugadores inscritos; sin apuesta cuenta 0-0."""
-    matches = Match.query.filter_by(match_date=fecha).order_by(Match.kickoff).all()
+    matches = (Match.query.filter(Match.match_date == fecha,
+                                  Match.stage != "eliminacion")
+               .order_by(Match.kickoff).all())
     ids = [m.id for m in matches]
     finished = {m.id: m for m in matches if m.finished}
     bet_map = {}
@@ -162,6 +175,65 @@ def overall_ranking():
             totals.setdefault(pid, {"award": 0.0, "bet": 0})
             totals[pid]["bet"] += s
     return totals
+
+
+# ----------------------------------------------------------------------------
+# Fase 2: ELIMINACIÓN (puntaje por partido, se acumula, empieza de cero)
+# ----------------------------------------------------------------------------
+def rank_key(ph, ap, hs, as_):
+    """Clave de orden de una apuesta (menor = mejor) para un partido jugado.
+       (exacto, acierto-de-resultado, diferencia en total de goles)."""
+    exact = 0 if (ph == hs and ap == as_) else 1
+    rs, ps = sign(hs - as_), sign(ph - ap)
+    if rs != 0:                      # resultado real con ganador
+        tier = 0 if ps == rs else (1 if ps == 0 else 2)   # gana correcto/empate/gana equiv.
+    else:                            # resultado real empate
+        tier = 0 if ps == 0 else 1
+    gd = abs((ph + ap) - (hs + as_))
+    return (exact, tier, gd)
+
+
+def match_award(m, players):
+    """Puntos por un partido de eliminación terminado: ranking de los jugadores
+       (mejor apuesta primero) → 9,8,...,1. Empates en un puesto: promedio."""
+    n = len(players)
+    if n == 0 or not m.finished:
+        return {}
+    bets = {b.player_id: b for b in Bet.query.filter_by(match_id=m.id)}
+    scored = []
+    for p in players:
+        b = bets.get(p.id)
+        ph, ap = (b.home_pred, b.away_pred) if b else (0, 0)
+        scored.append((p.id, rank_key(ph, ap, m.home_score, m.away_score)))
+    scored.sort(key=lambda x: x[1])
+    award, i = {}, 0
+    while i < n:
+        j = i
+        while j + 1 < n and scored[j + 1][1] == scored[i][1]:
+            j += 1
+        pts = sum(n - k for k in range(i, j + 1)) / (j - i + 1)   # posición 0→n, 1→n-1...
+        for k in range(i, j + 1):
+            award[scored[k][0]] = pts
+        i = j + 1
+    return award
+
+
+def knockout_matches():
+    return (Match.query.filter_by(stage="eliminacion")
+            .order_by(Match.kickoff).all())
+
+
+def knockout_ranking():
+    """(totals {pid: puntos}, breakdown {pid: {match_id: pts}}, matches_finished)."""
+    players = Player.query.all()
+    totals = {p.id: 0.0 for p in players}
+    breakdown = {p.id: {} for p in players}
+    finished = [m for m in knockout_matches() if m.finished]
+    for m in finished:
+        for pid, pts in match_award(m, players).items():
+            totals[pid] = totals.get(pid, 0) + pts
+            breakdown.setdefault(pid, {})[m.id] = pts
+    return totals, breakdown, finished
 
 
 # ----------------------------------------------------------------------------
@@ -583,7 +655,7 @@ def apuestas():
 def grupos():
     if not g.player:
         return redirect(url_for("login"))
-    matches = Match.query.all()
+    matches = Match.query.filter(Match.stage != "eliminacion").all()
     by_group = {}
     for m in matches:
         gl = TEAM_GROUP.get(m.home_team)
@@ -617,6 +689,25 @@ def grupos():
             total=len(ms),
         ))
     return render_template("grupos.html", groups=groups)
+
+
+@app.route("/eliminacion")
+def eliminacion():
+    if not g.player:
+        return redirect(url_for("login"))
+    players = Player.query.order_by(Player.name).all()
+    cols = player_colors()
+    totals, breakdown, finished = knockout_ranking()
+    rows = [dict(name=p.name, color=cols.get(p.id), pts=totals.get(p.id, 0.0),
+                 me=(p.id == g.player.id)) for p in players]
+    rows.sort(key=lambda r: (-r["pts"], r["name"].lower()))
+    grid = []
+    for p in players:
+        cells = [breakdown.get(p.id, {}).get(m.id) for m in finished]
+        grid.append(dict(name=p.name, color=cols.get(p.id),
+                         me=(p.id == g.player.id), cells=cells))
+    return render_template("eliminacion.html", rows=rows, matches=finished,
+                           grid=grid, total_ko=len(knockout_matches()))
 
 
 @app.route("/reglas")
@@ -765,8 +856,9 @@ def admin_crear():
     except ValueError:
         flash("Fecha/hora inválida", "error")
         return redirect(url_for("admin"))
+    stage = "eliminacion" if request.form.get("stage") == "eliminacion" else "grupos"
     db.session.add(Match(home_team=home, away_team=away,
-                         kickoff=kdt, match_date=kdt.date()))
+                         kickoff=kdt, match_date=kdt.date(), stage=stage))
     db.session.commit()
     flash("Partido agregado ⚽", "ok")
     return redirect(url_for("admin"))
@@ -816,6 +908,9 @@ def admin_editar(mid):
         except ValueError:
             flash("Fecha/hora inválida", "error")
             return redirect(url_for("admin"))
+    st = request.form.get("stage", "")
+    if st in ("grupos", "eliminacion"):
+        m.stage = st
     db.session.commit()
     flash("Partido actualizado ✏️", "ok")
     return redirect(url_for("admin"))

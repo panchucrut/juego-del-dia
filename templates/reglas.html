@@ -61,6 +61,26 @@
     </tbody>
   </table>
 
+  <h2>🏆 Fase 2: Eliminación (desde cero)</h2>
+  <p>Cuando empieza la <b>eliminación directa</b>, arranca un torneo nuevo:
+     los puntos de la fase de grupos <b>no</b> se traen. Lo ves en la pestaña
+     <b>Eliminación</b>.</p>
+  <ul class="points">
+    <li>🔢 <b>Cada partido</b> reparte puntos según el ranking: el que apostó
+       mejor se lleva <b>9</b>, el segundo <b>8</b>, y así hasta <b>1</b> el último.
+       Si hay empate en un puesto, se reparten esos puntos en partes iguales.</li>
+    <li>➕ Los puntos de cada partido se <b>van sumando</b> hasta el final.</li>
+  </ul>
+  <p><b>¿Quién apostó mejor en un partido?</b> En este orden:</p>
+  <ul class="points">
+    <li>1️⃣ <b>Resultado exacto.</b></li>
+    <li>2️⃣ <b>Acertar el resultado:</b> primero los que acertaron el ganador,
+       luego los que pusieron empate, y al final los que apostaron al otro equipo.</li>
+    <li>3️⃣ <b>Desempate:</b> el que se acerque más al <b>total de goles</b>.
+       Ej: si fue <b>2-1</b> (3 goles), apostar 3-1 (4 goles, a 1) es mejor que
+       1-0 o 3-2 (a 2 goles).</li>
+  </ul>
+
   {% if not current_player %}
     <p class="center"><a class="btn primary big" href="{{ url_for('login') }}">
       ¡Entendido, quiero jugar! 🎮</a></p>
