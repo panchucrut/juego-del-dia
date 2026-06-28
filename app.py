@@ -477,11 +477,15 @@ def sync_knockout():
     while dd <= end:
         dlist.append(dd.strftime("%Y%m%d"))
         dd += timedelta(days=1)
+    import time
     touched = 0
     for ds in dlist:
         try:
             evs = _espn_day_events(ds)
         except Exception:
+            evs = []
+        time.sleep(0.4)   # espaciar para no gatillar el rate-limit de ESPN
+        if not evs:
             continue
         for ev in evs:
             try:

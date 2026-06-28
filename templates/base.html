@@ -14,7 +14,7 @@
       {% if current_player %}
         <a href="{{ url_for('jugar') }}">Jugar</a>
         {% if not fase2 %}<a href="{{ url_for('grupos') }}">Grupos</a>{% endif %}
-        {% if not fase2 %}<a href="{{ url_for('ranking') }}">Ranking</a>{% endif %}
+        <a href="{{ url_for('ranking') }}">{% if fase2 %}1era Ronda{% else %}Ranking{% endif %}</a>
         <a href="{{ url_for('eliminacion') }}">Eliminación</a>
         <a href="{{ url_for('llaves') }}">Llaves</a>
         <a href="{{ url_for('apuestas') }}">Apuestas</a>
