@@ -468,11 +468,14 @@ def sync_knockout():
     """Crea/actualiza partidos de eliminación desde ESPN (equipos, hora, ronda,
        resultados). El cuadro se llena solo. Devuelve nº de partidos tocados."""
     existing = Match.query.filter_by(stage="eliminacion").count()
-    if existing < 32:                                  # carga inicial completa
+    full = existing < 32                               # carga inicial vs ventana
+    if full:
         start, end = date(2026, 6, 28), date(2026, 7, 20)
+        done = set(filter(None, get_setting("ko_dates_done", "").split(",")))
     else:                                              # ventana móvil (más liviano)
         t = now_local().date()
         start, end = t - timedelta(days=1), t + timedelta(days=5)
+        done = set()
     dlist, dd = [], start
     while dd <= end:
         dlist.append(dd.strftime("%Y%m%d"))
@@ -480,11 +483,16 @@ def sync_knockout():
     import time
     touched = 0
     for ds in dlist:
+        if full and ds in done:        # ya cargada en una corrida previa → saltar
+            continue
         try:
             evs = _espn_day_events(ds)
+            ok = True
         except Exception:
-            evs = []
+            evs, ok = [], False
         time.sleep(0.4)   # espaciar para no gatillar el rate-limit de ESPN
+        if full and ok:                # fetch OK (aunque vacío) → marcar hecha
+            done.add(ds)
         if not evs:
             continue
         for ev in evs:
@@ -520,6 +528,8 @@ def sync_knockout():
             except Exception:
                 continue
     db.session.commit()
+    if full:
+        set_setting("ko_dates_done", ",".join(sorted(done)))
     return touched
 
 
