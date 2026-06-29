@@ -469,17 +469,22 @@ def sync_knockout():
        resultados). El cuadro se llena solo. Devuelve nº de partidos tocados."""
     existing = Match.query.filter_by(stage="eliminacion").count()
     full = existing < 32                               # carga inicial vs ventana
-    if full:
-        start, end = date(2026, 6, 28), date(2026, 7, 20)
+    done = set()
+    if full:                                           # carga completa resumible
         done = set(filter(None, get_setting("ko_dates_done", "").split(",")))
-    else:                                              # ventana móvil (más liviano)
-        t = now_local().date()
-        start, end = t - timedelta(days=1), t + timedelta(days=5)
-        done = set()
-    dlist, dd = [], start
-    while dd <= end:
-        dlist.append(dd.strftime("%Y%m%d"))
-        dd += timedelta(days=1)
+        dlist, dd = [], date(2026, 6, 28)
+        while dd <= date(2026, 7, 20):
+            dlist.append(dd.strftime("%Y%m%d"))
+            dd += timedelta(days=1)
+    else:                                              # solo fechas con partidos por resolver
+        horizon = now_local() + timedelta(days=12)
+        ds = set()
+        for m in (Match.query.filter(Match.stage == "eliminacion",
+                                     Match.finished.isnot(True)).all()):
+            if m.match_date and m.kickoff and m.kickoff <= horizon:
+                ds.add(m.match_date.strftime("%Y%m%d"))
+                ds.add((m.match_date + timedelta(days=1)).strftime("%Y%m%d"))
+        dlist = sorted(ds)
     import time
     touched = 0
     for ds in dlist:
