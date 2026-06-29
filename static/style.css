@@ -107,6 +107,7 @@ input:focus{outline:2px solid var(--pri2)}
 .pts.p2{color:#0b0b16; background:var(--p2)}
 .pts.p1{color:#0b0b16; background:var(--p1)}
 .pts.p0{color:var(--muted)}
+.pts.ko{color:#fff; background:linear-gradient(135deg,var(--pri),var(--pri2))}
 .hint{font-size:.85rem; color:var(--muted); margin:8px 0 0}
 .hint.warn{color:var(--warn)}
 
@@ -161,6 +162,7 @@ tr.me .sticky-col{background:#2a2a5a}
 .pts-mini.p2{background:var(--p2); color:#0b0b16}
 .pts-mini.p1{background:var(--p1); color:#0b0b16}
 .pts-mini.p0{color:var(--muted)}
+.pts-mini.ko{background:linear-gradient(135deg,var(--pri),var(--pri2)); color:#fff}
 
 /* Grupos: apuesta vs realidad */
 .group-card{padding:14px}

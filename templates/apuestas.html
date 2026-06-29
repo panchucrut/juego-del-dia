@@ -41,7 +41,7 @@
                 {% if cell.shown %}
                   <span class="{% if cell.default %}muted{% endif %}">{{ cell.pred }}</span>
                   {% if cell.pts is not none %}
-                    <br><small class="pts-mini p{{ cell.pts }}">+{{ cell.pts }}</small>
+                    <br><small class="pts-mini {% if cell.ko %}ko{% else %}p{{ cell.pts }}{% endif %}">+{{ '%g' % cell.pts }}</small>
                   {% endif %}
                 {% else %}<span class="muted">🔒</span>{% endif %}
               </td>

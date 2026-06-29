@@ -227,6 +227,23 @@ def match_award(m, players):
     return award
 
 
+def points_map(m, players=None):
+    """{player_id: puntos} de un partido TERMINADO.
+       Fase grupos → bet_points (1/2/4). Eliminación → ranking del partido (9..1)."""
+    if not m.finished:
+        return {}
+    players = players or Player.query.order_by(Player.name).all()
+    if m.stage == "eliminacion":
+        return match_award(m, players)
+    bets = {b.player_id: b for b in Bet.query.filter_by(match_id=m.id)}
+    out = {}
+    for p in players:
+        b = bets.get(p.id)
+        hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
+        out[p.id] = bet_points(hp, ap, m.home_score, m.away_score)
+    return out
+
+
 def knockout_matches():
     return (Match.query.filter_by(stage="eliminacion")
             .order_by(Match.kickoff).all())
@@ -655,9 +672,9 @@ def jugar():
     info = []
     for m in matches:
         b = my_bets.get(m.id)
-        hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
-        pts = bet_points(hp, ap, m.home_score, m.away_score) if m.finished else None
-        info.append(dict(m=m, bet=b, locked=is_locked(m), points=pts))
+        pts = points_map(m).get(g.player.id) if m.finished else None
+        info.append(dict(m=m, bet=b, locked=is_locked(m), points=pts,
+                         ko=(m.stage == "eliminacion")))
 
     return render_template("jugar.html", fecha=fecha, fechas=fs, info=info)
 
@@ -769,17 +786,20 @@ def apuestas():
 
     cols = [dict(m=m, locked=is_locked(m)) for m in matches]
     pcol = player_colors()
+    players = Player.query.order_by(Player.name).all()
+    # puntos por partido: grupos = bet_points (1/2/4); eliminación = ranking 9..1
+    pmap = {m.id: points_map(m, players) for m in matches if m.finished}
     grid = []
-    for p in Player.query.order_by(Player.name).all():
+    for p in players:
         cells = []
         for m in matches:
             if is_locked(m):
                 b = bet_map.get((p.id, m.id))
                 hp, ap = (b.home_pred, b.away_pred) if b else (0, 0)
-                pts = (bet_points(hp, ap, m.home_score, m.away_score)
-                       if m.finished else None)
-                cells.append(dict(shown=True, pred=f"{hp}-{ap}",
-                                  pts=pts, default=(b is None)))
+                pts = pmap.get(m.id, {}).get(p.id) if m.finished else None
+                cells.append(dict(shown=True, pred=f"{hp}-{ap}", pts=pts,
+                                  ko=(m.stage == "eliminacion"),
+                                  default=(b is None)))
             else:
                 cells.append(dict(shown=False))
         grid.append(dict(name=p.name, color=pcol.get(p.id),

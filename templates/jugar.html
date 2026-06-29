@@ -65,19 +65,14 @@
 
         {% if m.finished %}
           <div class="result-line">
-            {% if it.bet %}
-              Tu apuesta: <b>{{ it.bet.home_pred }}-{{ it.bet.away_pred }}</b> →
-              {% if it.points == 4 %}<span class="pts p4">🌟 ¡Exacto! +4</span>
-              {% elif it.points == 2 %}<span class="pts p2">🔵 Diferencia +2</span>
-              {% elif it.points == 1 %}<span class="pts p1">🟢 Ganador +1</span>
-              {% else %}<span class="pts p0">❌ 0</span>{% endif %}
-            {% else %}
-              Sin apuesta (cuenta <b>0-0</b>) →
-              {% if it.points == 4 %}<span class="pts p4">🌟 +4</span>
-              {% elif it.points == 2 %}<span class="pts p2">🔵 +2</span>
-              {% elif it.points == 1 %}<span class="pts p1">🟢 +1</span>
-              {% else %}<span class="pts p0">0</span>{% endif %}
-            {% endif %}
+            {% if it.bet %}Tu apuesta: <b>{{ it.bet.home_pred }}-{{ it.bet.away_pred }}</b> →
+            {% else %}Sin apuesta (cuenta <b>0-0</b>) →{% endif %}
+            {% if it.ko %}
+              <span class="pts ko">🏆 +{{ '%g' % it.points }} pts</span>
+            {% elif it.points == 4 %}<span class="pts p4">🌟 ¡Exacto! +4</span>
+            {% elif it.points == 2 %}<span class="pts p2">🔵 Diferencia +2</span>
+            {% elif it.points == 1 %}<span class="pts p1">🟢 Ganador +1</span>
+            {% else %}<span class="pts p0">❌ 0</span>{% endif %}
           </div>
         {% endif %}
       </div>
