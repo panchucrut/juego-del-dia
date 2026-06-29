@@ -1,38 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Llaves · Juego del Día{% endblock %}
-{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="120">{% endblock %}
 {% block content %}
 
-<h1 class="day-title">🗺️ Llaves</h1>
-<p class="muted center">El cuadro de la eliminación. Se va llenando con los resultados;
-   el que gana avanza (en <b style="color:#34d399">verde</b>).</p>
+<h1 class="day-title">🗝️ Llaves</h1>
+<p class="muted center">El cuadro se llena solo a medida que avanzan los equipos.
+   Desliza de lado para ver todas las rondas →</p>
 
 {% if not any_ko %}
-  <div class="card center"><p class="muted">Todavía no hay partidos de eliminación cargados.</p></div>
+  <div class="card center"><p class="muted">Todavía no hay partidos de eliminación.</p></div>
 {% else %}
+
+{% macro team(s) %}
+  <div class="bk-team{% if s.adv %} adv{% endif %}{% if not s.real %} tbd{% endif %}">
+    {% if s.flag %}
+      <img class="bk-flag" src="https://flagcdn.com/w40/{{ s.flag }}.png" alt="" width="22" height="16">
+    {% else %}
+      <span class="bk-flag shield">🛡️</span>
+    {% endif %}
+    <span class="bk-name">{{ s.name }}</span>
+    {% if s.score is not none %}<span class="bk-score">{{ s.score }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
 <div class="bracket">
   {% for r in rounds %}
-    <div class="round-col">
+    <section class="round{% if r.link_in %} link-in{% endif %}{% if r.link_out %} link-out{% endif %}">
       <div class="round-h">{{ r.label }}</div>
-      {% for it in r.matches %}
-        <div class="bk-match">
-          <div class="bk-team {% if it.win == 'home' %}adv{% endif %}">
-            <span class="bk-name">{{ it.m.home_team }}</span>
-            <span class="bk-score">{% if it.m.finished %}{{ it.m.home_score }}{% endif %}</span>
+      <div class="round-body">
+        {% for it in r.matches %}
+          <div class="bk-cell">
+            <div class="bk-match{% if it.finished %} done{% endif %}">
+              <div class="bk-when">{{ it.when }}</div>
+              {{ team(it.home) }}
+              {{ team(it.away) }}
+            </div>
           </div>
-          <div class="bk-team {% if it.win == 'away' %}adv{% endif %}">
-            <span class="bk-name">{{ it.m.away_team }}</span>
-            <span class="bk-score">{% if it.m.finished %}{{ it.m.away_score }}{% endif %}</span>
-          </div>
-          <div class="bk-when">
-            {% if it.m.finished %}Final
-            {% else %}{{ it.m.match_date.day }}/{{ it.m.match_date.month }} {{ it.m.kickoff.strftime('%H:%M') }}{% endif %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
+        {% endfor %}
+      </div>
+    </section>
   {% endfor %}
 </div>
-<p class="muted center">Desliza de lado para ver todas las rondas →</p>
+
 {% endif %}
 {% endblock %}

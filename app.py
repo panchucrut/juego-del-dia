@@ -188,15 +188,18 @@ def overall_ranking():
 # ----------------------------------------------------------------------------
 def rank_key(ph, ap, hs, as_):
     """Clave de orden de una apuesta (menor = mejor) para un partido jugado.
-       (exacto, acierto-de-resultado, diferencia en total de goles)."""
+       (exacto, acierto-de-resultado, dif. de gol/margen, dif. en total de goles).
+       Entre quienes aciertan al ganador: 1º manda igualar la DIFERENCIA de goles
+       (margen), 2º la SUMA total más cercana."""
     exact = 0 if (ph == hs and ap == as_) else 1
     rs, ps = sign(hs - as_), sign(ph - ap)
     if rs != 0:                      # resultado real con ganador
         tier = 0 if ps == rs else (1 if ps == 0 else 2)   # gana correcto/empate/gana equiv.
     else:                            # resultado real empate
         tier = 0 if ps == 0 else 1
-    gd = abs((ph + ap) - (hs + as_))
-    return (exact, tier, gd)
+    margin = abs(abs(ph - ap) - abs(hs - as_))   # 1er filtro: misma diferencia de goles
+    total = abs((ph + ap) - (hs + as_))          # 2do filtro: suma total más cercana
+    return (exact, tier, margin, total)
 
 
 def match_award(m, players):
@@ -360,6 +363,22 @@ ES2EN = {
     'Suiza': 'Switzerland', 'Túnez': 'Tunisia', 'Turquía': 'Türkiye',
     'Estados Unidos': 'United States', 'Uruguay': 'Uruguay',
     'Uzbekistán': 'Uzbekistan',
+}
+
+# Código de bandera (flagcdn) por equipo, para el cuadro de llaves
+TEAM_ISO = {
+    'Argelia': 'dz', 'Argentina': 'ar', 'Australia': 'au', 'Austria': 'at',
+    'Bélgica': 'be', 'Bosnia': 'ba', 'Brasil': 'br', 'Canadá': 'ca',
+    'Cabo Verde': 'cv', 'Colombia': 'co', 'R.D. Congo': 'cd', 'Croacia': 'hr',
+    'Curazao': 'cw', 'Rep. Checa': 'cz', 'Ecuador': 'ec', 'Egipto': 'eg',
+    'Inglaterra': 'gb-eng', 'Francia': 'fr', 'Alemania': 'de', 'Ghana': 'gh',
+    'Haití': 'ht', 'Irán': 'ir', 'Irak': 'iq', 'Costa de Marfil': 'ci',
+    'Japón': 'jp', 'Jordania': 'jo', 'México': 'mx', 'Marruecos': 'ma',
+    'Países Bajos': 'nl', 'Nueva Zelanda': 'nz', 'Noruega': 'no', 'Panamá': 'pa',
+    'Paraguay': 'py', 'Portugal': 'pt', 'Qatar': 'qa', 'Arabia Saudita': 'sa',
+    'Escocia': 'gb-sct', 'Senegal': 'sn', 'Sudáfrica': 'za', 'Corea del Sur': 'kr',
+    'España': 'es', 'Suecia': 'se', 'Suiza': 'ch', 'Túnez': 'tn', 'Turquía': 'tr',
+    'Estados Unidos': 'us', 'Uruguay': 'uy', 'Uzbekistán': 'uz',
 }
 
 
@@ -833,30 +852,61 @@ ROUND_LABELS = {"r32": "16avos", "r16": "Octavos", "qf": "Cuartos",
 ROUND_ORDER = ["r32", "r16", "qf", "sf", "final", "3p"]
 
 
+DIAS_ABR = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+def _when_label(m):
+    """Etiqueta de fecha de un partido del cuadro (estilo 'Hoy 13:00')."""
+    if m.finished:
+        return "Fin"
+    if not m.kickoff:
+        return ""
+    d, hh = m.kickoff.date(), m.kickoff.strftime("%H:%M")
+    delta = (d - now_local().date()).days
+    if delta == 0:
+        return "Hoy · " + hh
+    if delta == 1:
+        return "Mañana · " + hh
+    return f"{DIAS_ABR[d.weekday()]} {d.day}/{d.month} · {hh}"
+
+
 @app.route("/llaves")
 def llaves():
     if not g.player:
         return redirect(url_for("login"))
     ms = knockout_matches()
 
+    def side(name, score, adv):
+        real = name in TEAM_ISO
+        return dict(name=name if real else "A definir",
+                    flag=TEAM_ISO.get(name), real=real,
+                    score=score, adv=adv)
+
     def item(m):
-        win = None
+        hw = aw = False
         if m.finished and m.home_score is not None and m.away_score is not None:
-            if m.home_score > m.away_score:
-                win = "home"
-            elif m.away_score > m.home_score:
-                win = "away"
-        return dict(m=m, win=win)
+            hw, aw = m.home_score > m.away_score, m.away_score > m.home_score
+        return dict(
+            home=side(m.home_team, m.home_score if m.finished else None, hw),
+            away=side(m.away_team, m.away_score if m.finished else None, aw),
+            when=_when_label(m), finished=bool(m.finished))
 
     rounds = []
     for rk in ROUND_ORDER:
         rms = [m for m in ms if (m.round or "") == rk]
         if rms:
-            rounds.append(dict(label=ROUND_LABELS[rk],
+            rounds.append(dict(label=ROUND_LABELS[rk], key=rk,
                                matches=[item(m) for m in rms]))
     sinronda = [m for m in ms if (m.round or "") not in ROUND_LABELS]
     if sinronda:
-        rounds.append(dict(label="Eliminación", matches=[item(m) for m in sinronda]))
+        rounds.append(dict(label="Eliminación", key="?",
+                           matches=[item(m) for m in sinronda]))
+    # conectores tipo árbol: el 3er puesto cuelga aparte (sin líneas)
+    for rd in rounds:
+        rd["detached"] = rd["key"] in ("3p", "?")
+    for i, rd in enumerate(rounds):
+        rd["link_in"] = i > 0 and not rd["detached"]
+        rd["link_out"] = i < len(rounds) - 1 and not rounds[i + 1]["detached"]
     return render_template("llaves.html", rounds=rounds, any_ko=bool(ms))
 
 
