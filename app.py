@@ -896,6 +896,37 @@ def llaves():
         return redirect(url_for("login"))
     ms = knockout_matches()
 
+    # --- estructura del cuadro: ordenar por ÁRBOL real, no por hora --------
+    # ESPN numera las llaves por ext_id y los cruces son explícitos en los
+    # nombres "Ganador <ronda> N"; ordenamos cada ronda expandiendo desde la
+    # final hacia atrás para que las líneas conecten al rival correcto.
+    MAIN = ["r32", "r16", "qf", "sf", "final"]
+    PREV = {"r16": "r32", "qf": "r16", "sf": "qf", "final": "sf"}
+    PFX = {"16avos": "r32", "8vos": "r16", "Cuartos": "qf", "Semi": "sf"}
+
+    def _extkey(m):
+        try:
+            return (0, int(m.ext_id))
+        except (TypeError, ValueError):
+            return (1, 0)
+
+    by_round = {}
+    for m in ms:
+        by_round.setdefault(m.round or "?", []).append(m)
+    for rk in by_round:
+        by_round[rk].sort(key=_extkey)
+    idx_to_match = {}                       # (ronda, n) -> partido  (n = nº de llave)
+    for rk, lst in by_round.items():
+        for i, m in enumerate(lst, 1):
+            idx_to_match[(rk, i)] = m
+
+    # equipos reales por ronda → resaltar al que avanzó (también por penales)
+    real_in = {rk: {t for mm in by_round.get(rk, [])
+                    for t in (mm.home_team, mm.away_team) if t in TEAM_ISO}
+               for rk in MAIN}
+    next_real = {rk: real_in.get(MAIN[i + 1], set())
+                 for i, rk in enumerate(MAIN[:-1])}
+
     def side(name, score, adv):
         real = name in TEAM_ISO
         return dict(name=name if real else "A definir",
@@ -905,22 +936,54 @@ def llaves():
     def item(m):
         hw = aw = False
         if m.finished and m.home_score is not None and m.away_score is not None:
-            hw, aw = m.home_score > m.away_score, m.away_score > m.home_score
+            if m.home_score != m.away_score:
+                hw, aw = m.home_score > m.away_score, m.away_score > m.home_score
+            else:                              # empate → penales: gana quien pasó
+                nxt = next_real.get(m.round, set())
+                hw, aw = m.home_team in nxt, m.away_team in nxt
         return dict(
             home=side(m.home_team, m.home_score if m.finished else None, hw),
             away=side(m.away_team, m.away_score if m.finished else None, aw),
             when=_when_label(m), finished=bool(m.finished))
 
+    def feeder(slot, my_round):
+        """Partido de la ronda anterior que alimenta este cupo (o None)."""
+        mm = _re.match(r"Ganador (16avos|8vos|Cuartos|Semi) (\d+)", slot or "")
+        if mm:
+            return idx_to_match.get((PFX[mm.group(1)], int(mm.group(2))))
+        prev = PREV.get(my_round)
+        if prev and slot in TEAM_ISO:           # equipo real: buscar su partido
+            for c in by_round.get(prev, []):
+                if slot in (c.home_team, c.away_team):
+                    return c
+        return None
+
+    present = [rk for rk in MAIN if by_round.get(rk)]
+    ordered = {}
+    if present:
+        ordered[present[-1]] = list(by_round[present[-1]])
+        for ri in range(len(present) - 1, 0, -1):
+            cur, prev = present[ri], present[ri - 1]
+            seq, seen = [], set()
+            for m in ordered[cur]:
+                for slot in (m.home_team, m.away_team):
+                    f = feeder(slot, cur)
+                    if f is not None and f.id not in seen:
+                        seq.append(f); seen.add(f.id)
+            for m in by_round[prev]:            # por si alguno quedó sin enlazar
+                if m.id not in seen:
+                    seq.append(m); seen.add(m.id)
+            ordered[prev] = seq
+
     rounds = []
-    for rk in ROUND_ORDER:
-        rms = [m for m in ms if (m.round or "") == rk]
-        if rms:
+    for rk in MAIN:
+        if by_round.get(rk):
             rounds.append(dict(label=ROUND_LABELS[rk], key=rk,
-                               matches=[item(m) for m in rms]))
-    sinronda = [m for m in ms if (m.round or "") not in ROUND_LABELS]
-    if sinronda:
-        rounds.append(dict(label="Eliminación", key="?",
-                           matches=[item(m) for m in sinronda]))
+                               matches=[item(m) for m in ordered.get(rk, by_round[rk])]))
+    for rk in ("3p", "?"):                       # 3er puesto / sin clasificar: sueltos
+        if by_round.get(rk):
+            rounds.append(dict(label=ROUND_LABELS.get(rk, "Eliminación"), key=rk,
+                               matches=[item(m) for m in by_round[rk]]))
     # conectores tipo árbol: el 3er puesto cuelga aparte (sin líneas)
     for rd in rounds:
         rd["detached"] = rd["key"] in ("3p", "?")
