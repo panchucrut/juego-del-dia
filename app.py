@@ -54,6 +54,7 @@ class Match(db.Model):
     stage = db.Column(db.String(20), default="grupos")    # grupos | eliminacion
     round = db.Column(db.String(10))                       # r32 r16 qf sf final 3p
     ext_id = db.Column(db.String(30))                      # id de evento ESPN (sync knockout)
+    match_no = db.Column(db.Integer)                       # matchNumber ESPN (nº de llave)
 
 
 class Bet(db.Model):
@@ -84,6 +85,8 @@ with app.app_context():
             db.session.execute(text("ALTER TABLE match ADD COLUMN round VARCHAR(10)"))
         if "ext_id" not in cols:
             db.session.execute(text("ALTER TABLE match ADD COLUMN ext_id VARCHAR(30)"))
+        if "match_no" not in cols:
+            db.session.execute(text("ALTER TABLE match ADD COLUMN match_no INTEGER"))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -500,6 +503,15 @@ def _espn_day_events(ds):
         return json.loads(r.read().decode()).get("events", [])
 
 
+def _espn_match_number(eid):
+    """nº de llave autoritativo (matchNumber) desde el core API de ESPN."""
+    url = ("https://sports.core.api.espn.com/v2/sports/soccer/leagues/"
+           f"fifa.world/events/{eid}/competitions/{eid}?lang=en")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode()).get("matchNumber")
+
+
 def sync_knockout():
     """Crea/actualiza partidos de eliminación desde ESPN (equipos, hora, ronda,
        resultados). El cuadro se llena solo. Devuelve nº de partidos tocados."""
@@ -571,6 +583,21 @@ def sync_knockout():
     db.session.commit()
     if full:
         set_setting("ko_dates_done", ",".join(sorted(done)))
+    # backfill del nº de llave (matchNumber) — una sola vez por partido
+    miss = (Match.query.filter(Match.stage == "eliminacion",
+                               Match.match_no.is_(None),
+                               Match.ext_id.isnot(None))
+            .order_by(Match.kickoff).limit(40).all())
+    for m in miss:
+        try:
+            mn = _espn_match_number(m.ext_id)
+            if mn:
+                m.match_no = int(mn)
+        except Exception:
+            pass
+        time.sleep(0.25)
+    if miss:
+        db.session.commit()
     return touched
 
 
@@ -902,23 +929,19 @@ def llaves():
     # final hacia atrás para que las líneas conecten al rival correcto.
     MAIN = ["r32", "r16", "qf", "sf", "final"]
     PREV = {"r16": "r32", "qf": "r16", "sf": "qf", "final": "sf"}
+    # nombre del placeholder → ronda alimentadora; nº de llave base de cada ronda
     PFX = {"16avos": "r32", "8vos": "r16", "Cuartos": "qf", "Semi": "sf"}
+    ROUND_START = {"r32": 73, "r16": 89, "qf": 97, "sf": 101}
 
-    def _extkey(m):
-        try:
-            return (0, int(m.ext_id))
-        except (TypeError, ValueError):
-            return (1, 0)
+    def _ordkey(m):
+        return (0, m.match_no) if m.match_no else (1, int(m.ext_id or 0))
 
     by_round = {}
     for m in ms:
         by_round.setdefault(m.round or "?", []).append(m)
     for rk in by_round:
-        by_round[rk].sort(key=_extkey)
-    idx_to_match = {}                       # (ronda, n) -> partido  (n = nº de llave)
-    for rk, lst in by_round.items():
-        for i, m in enumerate(lst, 1):
-            idx_to_match[(rk, i)] = m
+        by_round[rk].sort(key=_ordkey)
+    by_no = {m.match_no: m for m in ms if m.match_no is not None}
 
     # equipos reales por ronda → resaltar al que avanzó (también por penales)
     real_in = {rk: {t for mm in by_round.get(rk, [])
@@ -947,10 +970,11 @@ def llaves():
             when=_when_label(m), finished=bool(m.finished))
 
     def feeder(slot, my_round):
-        """Partido de la ronda anterior que alimenta este cupo (o None)."""
+        """Partido de la ronda anterior que alimenta este cupo (o None).
+           El nº del placeholder es local a su ronda → matchNumber = base + N - 1."""
         mm = _re.match(r"Ganador (16avos|8vos|Cuartos|Semi) (\d+)", slot or "")
         if mm:
-            return idx_to_match.get((PFX[mm.group(1)], int(mm.group(2))))
+            return by_no.get(ROUND_START[PFX[mm.group(1)]] + int(mm.group(2)) - 1)
         prev = PREV.get(my_round)
         if prev and slot in TEAM_ISO:           # equipo real: buscar su partido
             for c in by_round.get(prev, []):
