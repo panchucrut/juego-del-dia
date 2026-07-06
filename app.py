@@ -1022,6 +1022,43 @@ def reglas():
     return render_template("reglas.html")
 
 
+@app.route("/admin/migrate")
+def admin_migrate():
+    """Copia TODA la base actual a la Postgres apuntada por la env NEON_URL.
+       Uso único (Render→Neon). Protegido por PIN. Deja el destino listo ANTES
+       de cambiar DATABASE_URL, así no hay ventana sin datos."""
+    if request.args.get("pin") != ADMIN_PIN:
+        return jsonify(error="pin"), 403
+    target = (os.environ.get("NEON_URL") or "").strip()
+    if not target:
+        return jsonify(error="falta la variable de entorno NEON_URL"), 400
+    if target.startswith("postgres://"):
+        target = target.replace("postgres://", "postgresql://", 1)
+    from sqlalchemy import create_engine, text as satext
+    models = [Player, Match, Setting, Bet]        # orden FK-safe al insertar
+    dst = create_engine(target)
+    try:
+        db.metadata.create_all(dst)               # crea tablas/columnas en Neon
+        counts = {}
+        with dst.begin() as conn:
+            for m in reversed(models):            # limpiar destino primero
+                conn.execute(m.__table__.delete())
+            for m in models:
+                rows = [{c.name: getattr(r, c.name) for c in m.__table__.columns}
+                        for r in m.query.all()]
+                if rows:
+                    conn.execute(m.__table__.insert(), rows)
+                counts[m.__table__.name] = len(rows)
+            if dst.dialect.name == "postgresql":   # resetear secuencias id
+                for tn in ("player", "match", "bet"):
+                    conn.execute(satext(
+                        f"SELECT setval(pg_get_serial_sequence('{tn}','id'), "
+                        f"COALESCE((SELECT MAX(id) FROM {tn}), 1))"))
+    finally:
+        dst.dispose()
+    return jsonify(ok=True, counts=counts)
+
+
 # --------------------------------------------------------------------------
 # API para automatizar la carga de resultados (protegida por PIN)
 # --------------------------------------------------------------------------
