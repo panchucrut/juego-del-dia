@@ -18,7 +18,9 @@ MAX_PLAYERS = 15
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "cambia-esto-en-produccion")
 
-db_url = os.environ.get("DATABASE_URL", "sqlite:///juego.db")
+# Prioridad: NEON_URL (base migrada, persistente) > DATABASE_URL (Render, se borra) > sqlite
+db_url = (os.environ.get("NEON_URL")
+          or os.environ.get("DATABASE_URL", "sqlite:///juego.db"))
 if db_url.startswith("postgres://"):                 # compat Render/Heroku
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
